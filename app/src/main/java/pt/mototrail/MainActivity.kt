@@ -490,7 +490,7 @@ private fun fetchValhallaRoute(
         readTimeout = 30000
         setRequestProperty("User-Agent", "MotoTrail-Android/0.4.0")
     }
-    try {
+    return try {
         val response = (if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream)
             .bufferedReader().use { it.readText() }
         if (connection.responseCode !in 200..299) throw IllegalStateException("Serviço de rotas indisponível")
