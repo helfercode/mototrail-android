@@ -67,6 +67,11 @@ class TrackNavigationService : Service() {
     }
 
     private fun loadTrack(path: String, reversed: Boolean, resetTurns: Boolean) {
+        removeGpsUpdates()
+        wasOffTrack = false
+        lastAlertElapsed = 0L
+        getSystemService(NotificationManager::class.java).cancel(OFF_TRACK_NOTIFICATION_ID)
+        getSystemService(NotificationManager::class.java).cancel(TURN_NOTIFICATION_ID)
         val previousPath = preferences.getString(KEY_TRACK_PATH, null)
         if (resetTurns || previousPath != path) {
             lastTurnIndex = -1
