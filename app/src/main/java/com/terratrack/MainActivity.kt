@@ -149,6 +149,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var recordingElapsed by remember { mutableLongStateOf(preferences.getLong(RecordingService.KEY_ELAPSED, 0L)) }
     var lastRecordingPath by remember { mutableStateOf(preferences.getString(RecordingService.KEY_LAST_FILE, null)) }
     var savedRecordings by remember { mutableStateOf<List<File>>(emptyList()) }
+    var savedTracks by remember { mutableStateOf<List<File>>(emptyList()) }
     var savedMaps by remember { mutableStateOf<List<File>>(emptyList()) }
     var offlinePois by remember { mutableStateOf<List<OfflinePoi>>(emptyList()) }
     var poiCategories by remember { mutableStateOf(setOf("fuel", "water", "repair", "camping")) }
@@ -194,6 +195,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                     }
                     activeTrackPath = pair.first.absolutePath
                     activeTrack = pair.second
+                    savedTracks = withContext(Dispatchers.IO) { listTrackFiles(context) }
                     preferences.edit().putString(ACTIVE_TRACK, activeTrackPath).apply()
                     reversed = false
                     followTrack = false
@@ -260,6 +262,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
             }
         }
         savedRecordings = withContext(Dispatchers.IO) { listRecordingFiles(context) }
+        savedTracks = withContext(Dispatchers.IO) { listTrackFiles(context) }
         savedMaps = withContext(Dispatchers.IO) { listMapFiles(context) }
         offlinePois = withContext(Dispatchers.IO) { OfflinePoiStore.load(context) }
     }
@@ -531,10 +534,29 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
 
             "TRACKS" -> TracksScreen(
                 activeTrack = activeTrack,
+                trackFiles = savedTracks,
+                activeTrackPath = activeTrackPath,
                 reversed = reversed,
                 status = status,
                 busy = importBusy,
                 onImport = { gpxPicker.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "*/*")) },
+                onSelectTrack = { file ->
+                    scope.launch {
+                        try {
+                            val selected = withContext(Dispatchers.IO) {
+                                FileInputStream(file).use { parseGpx(it, file.name) }
+                            }
+                            activeTrackPath = file.absolutePath
+                            activeTrack = selected
+                            preferences.edit().putString(ACTIVE_TRACK, activeTrackPath).apply()
+                            reversed = false
+                            followTrack = false
+                            status = "Selected ${file.name}"
+                        } catch (error: Exception) {
+                            status = "Could not open track: ${error.message}"
+                        }
+                    }
+                },
                 onReverse = {
                     reversed = !reversed
                     status = if (reversed) "Track direction reversed. Original GPX remains unchanged." else "Original GPX direction restored."
@@ -857,10 +879,13 @@ private fun OfflineMapCanvas(
 @Composable
 private fun TracksScreen(
     activeTrack: GpxTrack?,
+    trackFiles: List<File>,
+    activeTrackPath: String?,
     reversed: Boolean,
     status: String,
     busy: Boolean,
     onImport: () -> Unit,
+    onSelectTrack: (File) -> Unit,
     onReverse: () -> Unit,
     onExport: () -> Unit,
     onBack: () -> Unit
@@ -900,7 +925,27 @@ private fun TracksScreen(
                 }
             }
         }
-        Text(status, color = TextMuted, fontSize = 12.sp)
+        Text("SAVED GPX FILES", color = Signal, fontSize = 12.sp, fontWeight = FontWeight.Black)
+        if (trackFiles.isEmpty()) {
+            Text("No imported GPX files stored yet.", color = TextMuted, fontSize = 12.sp)
+        } else {
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                items(trackFiles, key = { it.absolutePath }) { file ->
+                    Surface(color = if (file.absolutePath == activeTrackPath) Panel2 else Panel, shape = RoundedCornerShape(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(file.name, Modifier.weight(1f), color = TextMain, fontSize = 11.sp)
+                            TextButton(onClick = { onSelectTrack(file) }) {
+                                Text(if (file.absolutePath == activeTrackPath) "ACTIVE" else "OPEN", color = Signal)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Text(status, color = TextMuted, fontSize = 11.sp)
     }
 }
 
@@ -1356,6 +1401,13 @@ private fun downloadMapFile(context: Context, address: String): File {
         }
     }
 }
+
+private fun listTrackFiles(context: Context): List<File> =
+    context.getExternalFilesDirs(null).filterNotNull()
+        .map { File(it, "tracks") }
+        .flatMap { it.listFiles()?.filter { file -> file.isFile && file.extension.equals("gpx", true) }.orEmpty() }
+        .distinctBy { it.absolutePath }
+        .sortedByDescending { it.lastModified() }
 
 private fun listRecordingFiles(context: Context): List<File> =
     context.getExternalFilesDirs(null).filterNotNull()
