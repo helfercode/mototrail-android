@@ -1254,8 +1254,18 @@ private fun ScreenHeader(title: String, onBack: () -> Unit) {
 private fun RallyMetric(label: String, value: String, modifier: Modifier = Modifier) {
     Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp)) {
         Column(Modifier.padding(9.dp)) {
-            Text(label, color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Text(value, color = TextMain, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun RallyPrimaryMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp)) {
+        Column(Modifier.padding(9.dp)) {
+            Text(label, color = Signal, fontSize = 11.sp, fontWeight = FontWeight.Black)
+            Text(value, color = TextMain, fontSize = 32.sp, fontWeight = FontWeight.Black, maxLines = 1)
         }
     }
 }
