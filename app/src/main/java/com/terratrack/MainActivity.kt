@@ -992,6 +992,118 @@ private fun RecordingScreen(
 }
 
 @Composable
+private fun OfflinePoiScreen(
+    pois: List<OfflinePoi>,
+    categories: Set<String>,
+    radiusMeters: Int,
+    currentLocation: Location?,
+    busy: Boolean,
+    status: String,
+    onCategoryChange: (String, Boolean) -> Unit,
+    onRadiusChange: (Int) -> Unit,
+    onDownload: () -> Unit,
+    onBack: () -> Unit
+) {
+    val categoryOptions = listOf(
+        "fuel" to "FUEL STATIONS",
+        "water" to "DRINKING WATER & SPRINGS",
+        "repair" to "WORKSHOPS",
+        "camping" to "CAMPSITES & CARAVAN SITES"
+    )
+    val visiblePois = pois.filter { it.category in categories }
+    Column(
+        Modifier.fillMaxSize().background(Night).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        ScreenHeader("OFFLINE POI", onBack)
+        Text(
+            "Download useful places around your current GPS position. After downloading, these locations remain stored on this device and appear on the map without mobile data.",
+            color = TextMuted,
+            fontSize = 13.sp
+        )
+        Surface(color = Panel, shape = RoundedCornerShape(10.dp)) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("CURRENT GPS POSITION", color = Signal, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                Text(
+                    currentLocation?.let { "${"%.5f".format(Locale.US, it.latitude)}, ${"%.5f".format(Locale.US, it.longitude)}" }
+                        ?: "No GPS fix yet. Enable location on the map screen.",
+                    color = TextMain,
+                    fontSize = 14.sp
+                )
+            }
+        }
+        Text("CATEGORIES TO DOWNLOAD", color = Signal, fontSize = 12.sp, fontWeight = FontWeight.Black)
+        categoryOptions.forEach { (key, label) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = key in categories,
+                    onCheckedChange = { onCategoryChange(key, it) },
+                    colors = CheckboxDefaults.colors(checkedColor = Signal, checkmarkColor = Night)
+                )
+                Text(label, color = TextMain, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Text("SEARCH RADIUS", color = Signal, fontSize = 12.sp, fontWeight = FontWeight.Black)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(10000, 25000, 50000).forEach { radius ->
+                OutlinedButton(
+                    onClick = { onRadiusChange(radius) },
+                    modifier = Modifier.weight(1f).height(46.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (radiusMeters == radius) Signal else Panel,
+                        contentColor = if (radiusMeters == radius) Night else TextMain
+                    )
+                ) {
+                    Text("${radius / 1000} KM", fontWeight = FontWeight.Black)
+                }
+            }
+        }
+        Button(
+            onClick = onDownload,
+            modifier = Modifier.fillMaxWidth().height(58.dp),
+            enabled = !busy && currentLocation != null && categories.isNotEmpty()
+        ) {
+            Text(if (busy) "DOWNLOADING POI…" else "DOWNLOAD AROUND GPS", fontWeight = FontWeight.Black)
+        }
+        Text(
+            "OpenStreetMap data via Overpass API. Downloading requires an Internet connection; navigation uses the saved local copy.",
+            color = TextMuted,
+            fontSize = 10.sp
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("SAVED LOCATIONS", Modifier.weight(1f), color = Signal, fontSize = 12.sp, fontWeight = FontWeight.Black)
+            Text("${visiblePois.size} shown / ${pois.size} stored", color = TextMuted, fontSize = 10.sp)
+        }
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            items(visiblePois, key = { it.id }) { poi ->
+                Surface(color = Panel, shape = RoundedCornerShape(8.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when (poi.category) {
+                                "fuel" -> "F"
+                                "water" -> "W"
+                                "repair" -> "R"
+                                else -> "C"
+                            },
+                            color = Signal,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 17.sp
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(poi.name, color = TextMain, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(poi.category.uppercase(Locale.US), color = TextMuted, fontSize = 9.sp)
+                        }
+                        TextButton(onClick = { onBack() }) { Text("MAP", color = Signal) }
+                    }
+                }
+            }
+        }
+        Text(status, color = TextMuted, fontSize = 10.sp)
+    }
+}
+
+@Composable
 private fun MapsScreen(
     currentMap: File?,
     maps: List<File>,
