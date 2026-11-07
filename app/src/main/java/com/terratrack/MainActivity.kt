@@ -139,6 +139,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
     var followTrack by remember { mutableStateOf(navigationPreferences.getBoolean(TrackNavigationService.KEY_ACTIVE, false)) }
     var navigationDistance by remember { mutableFloatStateOf(navigationPreferences.getFloat(TrackNavigationService.KEY_DISTANCE_METERS, Float.NaN)) }
+    var navigationOffTrack by remember { mutableStateOf(navigationPreferences.getBoolean(TrackNavigationService.KEY_OFF_TRACK, false)) }
     var pendingTrackFollow by remember { mutableStateOf(false) }
     var showPoiLayer by remember { mutableStateOf(true) }
     var navigationMode by remember { mutableStateOf("TRACK") }
@@ -295,6 +296,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
             lastRecordingPath = preferences.getString(RecordingService.KEY_LAST_FILE, null)
             followTrack = navigationPreferences.getBoolean(TrackNavigationService.KEY_ACTIVE, false)
             navigationDistance = navigationPreferences.getFloat(TrackNavigationService.KEY_DISTANCE_METERS, Float.NaN)
+            navigationOffTrack = navigationPreferences.getBoolean(TrackNavigationService.KEY_OFF_TRACK, false)
             if (recordingState == RecordingService.STATE_STOPPED) {
                 savedRecordings = withContext(Dispatchers.IO) { listRecordingFiles(context) }
             }
@@ -468,6 +470,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                             }
                             RallyButton("POINT TO POINT", Modifier.weight(1f).height(44.dp), active = navigationMode == "POINT") {
                                 navigationMode = "POINT"
+                                if (followTrack) TrackNavigationService.stop(context)
                                 followTrack = false
                                 status = "Tap the map to select a destination point."
                                 showControls()
