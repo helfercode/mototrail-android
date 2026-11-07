@@ -57,6 +57,7 @@ fun parseGpx(input: InputStream, fileName: String): GpxTrack {
                 "type", "sym" -> if (inWaypoint) {
                     waypointCategory = try { parser.nextText().trim() } catch (_: Exception) { null }
                 }
+                "trkseg" -> { previous = null }
                 "wpt" -> {
                     inWaypoint = true
                     currentLat = parser.getAttributeValue(null, "lat")?.toDoubleOrNull()
