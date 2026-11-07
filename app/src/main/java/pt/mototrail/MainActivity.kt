@@ -142,6 +142,7 @@ private fun MapPanel(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var currentLocation by remember { mutableStateOf<LatLng?>(null) }
+    var currentBearing by remember { mutableFloatStateOf(0f) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var userMarker by remember { mutableStateOf<Marker?>(null) }
     var targetMarker by remember { mutableStateOf<Marker?>(null) }
@@ -161,7 +162,10 @@ private fun MapPanel(
             val allowed = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                 context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             val listener = object : LocationListener {
-                override fun onLocationChanged(location: Location) { currentLocation = LatLng(location.latitude, location.longitude) }
+                override fun onLocationChanged(location: Location) {
+                    currentLocation = LatLng(location.latitude, location.longitude)
+                    if (location.hasBearing() && location.speed > 1.5f) currentBearing = location.bearing
+                }
             }
             try {
                 if (allowed) listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).forEach { provider ->
@@ -176,13 +180,14 @@ private fun MapPanel(
             onDispose { lm.removeUpdates(listener) }
         }
     }
-    LaunchedEffect(map, currentLocation) {
+    LaunchedEffect(map, currentLocation, currentBearing) {
         val m = map ?: return@LaunchedEffect
         val p = currentLocation ?: return@LaunchedEffect
         if (userMarker == null) userMarker = m.addMarker(MarkerOptions().position(p).title("A tua localização"))
         else { userMarker?.position = p; userMarker?.let { m.updateMarker(it) } }
         destination?.let { distance = haversine(p.latitude, p.longitude, it.latitude, it.longitude) }
-        if (!firstCenter) { m.cameraPosition = CameraPosition.Builder().target(p).zoom(14.5).build(); firstCenter = true }
+        if (!firstCenter) { m.cameraPosition = CameraPosition.Builder().target(p).zoom(17.0).bearing(currentBearing.toDouble()).tilt(45.0).build(); firstCenter = true }
+        else if (mode == "Destino") { m.cameraPosition = CameraPosition.Builder().target(p).zoom(17.0).bearing(currentBearing.toDouble()).tilt(45.0).build() }
     }
     LaunchedEffect(map, gpx) {
         val m = map ?: return@LaunchedEffect
@@ -236,7 +241,7 @@ private fun MapPanel(
                     FilledTonalButton(onClick = { onOpenPage("Comunidade"); showControls() }) { Text("Comunidade") }
                     FilledTonalIconButton(onClick = { onRequestLocation(); showControls() }) { Text("⌖") }
                     FilledTonalIconButton(onClick = {
-                        currentLocation?.let { map?.cameraPosition = CameraPosition.Builder().target(it).zoom(14.5).build() } ?: onRequestLocation()
+                        currentLocation?.let { map?.cameraPosition = CameraPosition.Builder().target(it).zoom(17.0).bearing(currentBearing.toDouble()).tilt(45.0).build() } ?: onRequestLocation()
                         showControls()
                     }) { Text("◎") }
                 }
