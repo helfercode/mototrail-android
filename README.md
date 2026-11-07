@@ -28,7 +28,7 @@ TerraTrack is an Android off-road navigation application for adventure motorcycl
 - Recording uses an Android location foreground service and a persistent notification, and can continue with the screen off while the service is active.
 - Recorded GPX includes timestamped GPS points and altitude when the device supplies it. Paused sections are stored as separate GPX track segments.
 - Saved recording list and GPX export through Android's document picker.
-- Local processing of location and tracks. No account or location upload is implemented.
+- GPX navigation, imported tracks and recordings are stored and processed locally. A user-initiated Overpass POI search transmits the current centre coordinates and chosen radius to the public Overpass endpoint so it can return nearby places. The resulting POIs are stored locally. No user account or continuous location tracking server is implemented.
 
 ## Known limitations and validation still required
 
