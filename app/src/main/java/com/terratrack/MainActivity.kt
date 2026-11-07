@@ -1037,15 +1037,34 @@ private fun OfflineMapCanvas(
                     overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
                     overlayState.destinationLine = null
 
-                    val target = latestDestination
-                val location = latestLocation
-                if (target == null || location == null) {
-                    overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
-                    overlayState.destinationLine = null
-                } else {
+                    latestDestination?.let { target ->
+                        val targetFill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 215, 255, 53))
+                            setStyle(Style.FILL)
+                        }
+                        val targetOutline = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLACK))
+                            setStrokeWidth(2f * view.model.displayModel.scaleFactor)
+                            setStyle(Style.STROKE)
+                        }
+                        val targetMarker = FixedPixelCircle(
+                            LatLong(target.latitude, target.longitude),
+                            12f,
+                            targetFill,
+                            targetOutline
+                        )
+                        view.layerManager.layers.add(targetMarker)
+                        overlayState.destinationMarker = targetMarker
+                    }
+                    overlayState.destinationSignature = destinationSignature
+                }
+
+                val currentLocation = latestLocation
+                val currentDestination = latestDestination
+                if (currentDestination != null && currentLocation != null) {
                     val destinationPoints = listOf(
-                        LatLong(location.latitude, location.longitude),
-                        LatLong(target.latitude, target.longitude)
+                        LatLong(currentLocation.latitude, currentLocation.longitude),
+                        LatLong(currentDestination.latitude, currentDestination.longitude)
                     )
                     val line = overlayState.destinationLine
                     if (line == null) {
@@ -1061,10 +1080,13 @@ private fun OfflineMapCanvas(
                     } else {
                         line.setPoints(destinationPoints)
                     }
+                } else {
+                    overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
+                    overlayState.destinationLine = null
                 }
 
-                if (location != null) {
-                    val position = LatLong(location.latitude, location.longitude)
+                if (currentLocation != null) {
+                    val position = LatLong(currentLocation.latitude, currentLocation.longitude)
                     val marker = overlayState.marker
                     if (marker == null) {
                         val fill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
