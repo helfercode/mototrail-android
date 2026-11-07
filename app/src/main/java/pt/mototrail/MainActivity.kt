@@ -189,7 +189,7 @@ fun MapPage(
 ) {
     Text("O teu próximo caminho começa aqui.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     Box(
-        modifier = Modifier.fillMaxWidth().weight(1f).background(Color(0xFFE0E7DF), RoundedCornerShape(24.dp)).padding(20.dp),
+        modifier = Modifier.fillMaxWidth().weight(300.dp).background(Color(0xFFE0E7DF), RoundedCornerShape(24.dp)).padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
