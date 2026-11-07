@@ -129,6 +129,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val preferences = remember { context.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE) }
+    val navigationPreferences = remember { context.getSharedPreferences(TrackNavigationService.PREFS, Context.MODE_PRIVATE) }
 
     var activeTrack by remember { mutableStateOf<GpxTrack?>(null) }
     var activeTrackPath by remember { mutableStateOf(preferences.getString(ACTIVE_TRACK, null)) }
@@ -136,7 +137,9 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var currentLocation by remember { mutableStateOf<Location?>(null) }
     var compassHeading by remember { mutableFloatStateOf(Float.NaN) }
     var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
-    var followTrack by remember { mutableStateOf(false) }
+    var followTrack by remember { mutableStateOf(navigationPreferences.getBoolean(TrackNavigationService.KEY_ACTIVE, false)) }
+    var navigationDistance by remember { mutableFloatStateOf(navigationPreferences.getFloat(TrackNavigationService.KEY_DISTANCE_METERS, Float.NaN)) }
+    var pendingTrackFollow by remember { mutableStateOf(false) }
     var showPoiLayer by remember { mutableStateOf(true) }
     var navigationMode by remember { mutableStateOf("TRACK") }
     var destination by remember { mutableStateOf<TrackPoint?>(null) }
@@ -182,6 +185,16 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                 RecordingService.start(context, name)
                 pendingRecordName = null
                 ui.selectedTab = "RECORD"
+            }
+            if (pendingTrackFollow) {
+                val path = activeTrackPath
+                if (path != null) {
+                    TrackNavigationService.start(context, path)
+                    followTrack = true
+                } else {
+                    status = "Select a GPX file before starting navigation."
+                }
+                pendingTrackFollow = false
             }
         } else {
             status = "Location permission is required for GPS navigation and GPX recording."
@@ -280,6 +293,8 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
             recordingDistance = preferences.getLong(RecordingService.KEY_DISTANCE_METERS, 0L)
             recordingElapsed = preferences.getLong(RecordingService.KEY_ELAPSED, 0L)
             lastRecordingPath = preferences.getString(RecordingService.KEY_LAST_FILE, null)
+            followTrack = navigationPreferences.getBoolean(TrackNavigationService.KEY_ACTIVE, false)
+            navigationDistance = navigationPreferences.getFloat(TrackNavigationService.KEY_DISTANCE_METERS, Float.NaN)
             if (recordingState == RecordingService.STATE_STOPPED) {
                 savedRecordings = withContext(Dispatchers.IO) { listRecordingFiles(context) }
             }
@@ -434,7 +449,8 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             RallyMetric("TRACK", activeTrack?.let { formatDistance(it.distanceKm) } ?: "—", Modifier.weight(1f))
                             if (navigationMode == "TRACK") {
-                                RallyPrimaryMetric("OFF TRACK", distanceFromTrack?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(Locale.US, it / 1000)} km" } ?: "—", Modifier.weight(1f))
+                                val shownOffTrackDistance = distanceFromTrack ?: navigationDistance.takeIf { it.isFinite() }?.toDouble()
+                                RallyPrimaryMetric("OFF TRACK", shownOffTrackDistance?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(Locale.US, it / 1000)} km" } ?: "—", Modifier.weight(1f))
                             } else {
                                 RallyPrimaryMetric("TO DESTINATION", destinationDistance?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(Locale.US, it / 1000)} km" } ?: "TAP MAP", Modifier.weight(1f))
                             }
@@ -487,10 +503,24 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                         RallyButton(if (followTrack) "PAUSE" else "FOLLOW", Modifier.weight(1f).height(64.dp), active = followTrack) {
                             if (navigationMode != "TRACK") {
                                 status = "Switch to Track Follow mode to follow an imported GPX track."
-                            } else if (activeTrack == null) {
+                            } else if (activeTrack == null || activeTrackPath == null) {
                                 status = "Import a GPX track before following it."
+                            } else if (followTrack) {
+                                TrackNavigationService.stop(context)
+                                followTrack = false
+                                status = "Background GPX navigation stopped."
+                            } else if (!hasLocationPermission(context)) {
+                                pendingTrackFollow = true
+                                permissionLauncher.launch(locationPermissions())
                             } else {
-                                followTrack = !followTrack
+                                try {
+                                    TrackNavigationService.start(context, activeTrackPath!!)
+                                    followTrack = true
+                                    status = "Background GPX navigation started. Off-track warnings begin at 50 metres."
+                                } catch (error: Exception) {
+                                    followTrack = false
+                                    status = "Could not start background navigation: ${error.message}"
+                                }
                             }
                             showControls()
                         }
@@ -568,6 +598,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                             val selected = withContext(Dispatchers.IO) {
                                 FileInputStream(file).use { parseGpx(it, file.name) }
                             }
+                            if (followTrack) TrackNavigationService.stop(context)
                             activeTrackPath = file.absolutePath
                             activeTrack = selected
                             preferences.edit().putString(ACTIVE_TRACK, activeTrackPath).apply()
