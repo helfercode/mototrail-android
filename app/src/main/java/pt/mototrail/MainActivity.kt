@@ -258,6 +258,7 @@ private fun MapPanel(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
                     FilledTonalButton(onClick = { onOpenPage("Percursos"); showControls() }) { Text("Percursos") }
                     FilledTonalButton(onClick = { onOpenPage("Comunidade"); showControls() }) { Text("Comunidade") }
+                    FilledTonalButton(onClick = { showRouteSettings = true; showControls() }) { Text("Definições de trajeto") }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     SingleChoiceSegmentedButtonRow {
@@ -309,6 +310,11 @@ private fun MapPanel(
                             showControls()
                         }, modifier = Modifier.fillMaxWidth()) { Text(if (navigating) "Recalcular percurso" else "Calcular rota e iniciar navegação") }
                         routeStatus?.let { Text(it, Modifier.padding(8.dp), color = Forest, style = MaterialTheme.typography.bodySmall) }
+                        if (routeDistanceKm > 0.0) {
+                            Text("%.1f km · cerca de %d min".format(routeDistanceKm, routeDurationMin.roundToInt()), Modifier.padding(horizontal = 8.dp), color = Forest)
+                            if (navigating) Text(nextInstruction, Modifier.padding(8.dp), fontWeight = FontWeight.Bold, color = Forest)
+                        }
+                        Text("Atenção: confirma sempre o percurso antes de partir. Pode incluir estradas intransitáveis, degradadas ou privadas, devido a informação cartográfica incompleta ou desactualizada.", Modifier.padding(8.dp), color = Color(0xFF8A3B16), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -319,6 +325,41 @@ private fun MapPanel(
                 currentLocation?.let { map?.cameraPosition = CameraPosition.Builder().target(it).zoom(16.0).bearing(0.0).tilt(0.0).build() } ?: onRequestLocation()
                 showControls()
             }) { Text("⌖") }
+        }
+        if (showRouteSettings) {
+            AlertDialog(
+                onDismissRequest = { showRouteSettings = false },
+                title = { Text("Definições de trajeto") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = avoidTolls, onCheckedChange = { avoidTolls = it })
+                            Text("Evitar portagens")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = avoidHighways, onCheckedChange = { avoidHighways = it })
+                            Text("Evitar autoestradas")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = preferSecondary, onCheckedChange = { preferSecondary = it })
+                            Text("Privilegiar estradas secundárias e sinuosas")
+                        }
+                        Text("Tipo de piso", fontWeight = FontWeight.Bold)
+                        listOf("Pavimentado", "Misto", "Aventura").forEach { option ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = surfaceMode == option, onClick = { surfaceMode = option })
+                                Text(when(option) {
+                                    "Pavimentado" -> "Evitar gravilha, terra e aceiros"
+                                    "Misto" -> "Combinar asfalto e caminhos não pavimentados"
+                                    else -> "Privilegiar gravilha, terra batida e caminhos"
+                                })
+                            }
+                        }
+                        Text("As preferências influenciam o cálculo, mas não garantem a condição, legalidade ou transitabilidade de cada estrada. A preferência por estradas sinuosas é aproximada através da escolha de vias secundárias.", color = Color(0xFF8A3B16), style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showRouteSettings = false }) { Text("Guardar") } }
+            )
         }
         Surface(Modifier.align(Alignment.BottomStart).padding(8.dp), color = Color.White.copy(alpha = 0.88f), shape = RoundedCornerShape(8.dp)) {
             Text("© OpenStreetMap · OpenTopoMap · openmaps.fr", Modifier.padding(6.dp), style = MaterialTheme.typography.labelSmall, color = Color.DarkGray)
