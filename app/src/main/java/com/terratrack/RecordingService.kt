@@ -225,6 +225,7 @@ class RecordingService : Service() {
 
     private fun openSegment() {
         if (segmentOpen) return
+        elapsedBeforeSegment = preferences.getLong(KEY_ELAPSED, elapsedBeforeSegment)
         writeText("<trkseg>\n")
         segmentOpen = true
         segmentStartElapsed = SystemClock.elapsedRealtime()
