@@ -1,6 +1,7 @@
 package com.terratrack
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -705,6 +707,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                         exportPicker.launch(File(path).name)
                     }
                 },
+                onShare = { activeTrackPath?.let { shareGpxFile(context, File(it)) } },
                 onBack = { ui.selectedTab = "MAP" }
             )
 
@@ -736,6 +739,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                     pendingExportPath = file.absolutePath
                     exportPicker.launch(file.name)
                 },
+                onShare = { file -> shareGpxFile(context, file) },
                 onBack = { ui.selectedTab = "MAP" }
             )
 
@@ -1119,6 +1123,7 @@ private fun TracksScreen(
     onSelectTrack: (File) -> Unit,
     onReverse: () -> Unit,
     onExport: () -> Unit,
+    onShare: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(Night).padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -1149,8 +1154,13 @@ private fun TracksScreen(
                     OutlinedButton(onClick = onReverse, modifier = Modifier.fillMaxWidth().height(54.dp)) {
                         Text(if (reversed) "RESTORE ORIGINAL DIRECTION" else "REVERSE TRACK DIRECTION")
                     }
-                    OutlinedButton(onClick = onExport, modifier = Modifier.fillMaxWidth().height(54.dp)) {
-                        Text("EXPORT GPX")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onExport, modifier = Modifier.weight(1f).height(54.dp)) {
+                            Text("EXPORT")
+                        }
+                        OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f).height(54.dp)) {
+                            Text("SHARE GPX")
+                        }
                     }
                     Text("The original imported GPX remains unchanged. No automatic rerouting is used in track-following mode.", color = TextMuted, fontSize = 12.sp)
                 }
@@ -1196,6 +1206,7 @@ private fun RecordingScreen(
     onResume: () -> Unit,
     onStop: () -> Unit,
     onExport: (File) -> Unit,
+    onShare: (File) -> Unit,
     onBack: () -> Unit
 ) {
     val active = state == RecordingService.STATE_RECORDING
@@ -1256,6 +1267,7 @@ private fun RecordingScreen(
                         ) {
                             Text(file.name, Modifier.weight(1f), color = TextMain, fontSize = 12.sp)
                             TextButton(onClick = { onExport(file) }) { Text("EXPORT", color = Signal, fontWeight = FontWeight.Bold) }
+                            TextButton(onClick = { onShare(file) }) { Text("SHARE", color = Signal, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
@@ -1593,6 +1605,23 @@ private fun locationPermissions(): Array<String> =
     } else {
         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
     }
+
+private fun shareGpxFile(context: Context, source: File) {
+    if (!source.exists() || !source.isFile) throw IllegalStateException("GPX file is not available.")
+    val shareDirectory = File(context.cacheDir, "shared_gpx").apply { if (!exists()) mkdirs() }
+    val destination = File(shareDirectory, safeFileName(source.name))
+    source.inputStream().use { input ->
+        destination.outputStream().use { output -> input.copyTo(output) }
+    }
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", destination)
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "application/gpx+xml"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newRawUri("GPX track", uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Share GPX track"))
+}
 
 private fun displayName(context: Context, uri: Uri): String {
     var name = "Imported file"
