@@ -166,6 +166,7 @@ private fun MapPanel(
     var preferSecondary by remember { mutableStateOf(true) }
     var surfaceMode by remember { mutableStateOf("Pavimentado") }
     var routeInstructions by remember { mutableStateOf<List<RouteManeuver>>(emptyList()) }
+    var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
     var routeDistanceKm by remember { mutableDoubleStateOf(0.0) }
     var routeDurationMin by remember { mutableDoubleStateOf(0.0) }
     var nextInstruction by remember { mutableStateOf("Segue o percurso.") }
@@ -199,14 +200,22 @@ private fun MapPanel(
             onDispose { lm.removeUpdates(listener) }
         }
     }
-    LaunchedEffect(map, currentLocation, currentBearing) {
+    LaunchedEffect(map, currentLocation, currentBearing, navigating, routePoints, routeInstructions) {
         val m = map ?: return@LaunchedEffect
         val p = currentLocation ?: return@LaunchedEffect
         if (userMarker == null) userMarker = m.addMarker(MarkerOptions().position(p).title("A tua localização"))
         else { userMarker?.position = p; userMarker?.let { m.updateMarker(it) } }
         destination?.let { distance = haversine(p.latitude, p.longitude, it.latitude, it.longitude) }
         if (!firstCenter) { m.cameraPosition = CameraPosition.Builder().target(p).zoom(15.5).bearing(0.0).tilt(0.0).build(); firstCenter = true }
-        else if (navigating) { m.cameraPosition = CameraPosition.Builder().target(p).zoom(16.5).bearing(0.0).tilt(0.0).build() }
+        else if (navigating) {
+            m.cameraPosition = CameraPosition.Builder().target(p).zoom(16.5).bearing(currentBearing.toDouble()).tilt(0.0).build()
+            if (routePoints.isNotEmpty()) {
+                val nearest = routePoints.indices.minByOrNull { i ->
+                    haversine(p.latitude, p.longitude, routePoints[i].latitude, routePoints[i].longitude)
+                } ?: 0
+                nextInstruction = routeInstructions.firstOrNull { it.endShapeIndex > nearest + 2 }?.instruction ?: "Estás a chegar ao destino."
+            }
+        }
     }
     LaunchedEffect(map, gpx) {
         val m = map ?: return@LaunchedEffect
@@ -296,6 +305,7 @@ private fun MapPanel(
                                         routeLine?.let { map?.removePolyline(it) }
                                         routeLine = map?.addPolyline(PolylineOptions().addAll(result.points).color(android.graphics.Color.rgb(24, 59, 50)).width(6f))
                                         routeInstructions = result.maneuvers
+                                        routePoints = result.points
                                         routeDistanceKm = result.distanceKm
                                         routeDurationMin = result.durationMinutes
                                         nextInstruction = result.maneuvers.firstOrNull()?.instruction ?: "Segue o percurso."
