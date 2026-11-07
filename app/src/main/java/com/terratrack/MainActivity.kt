@@ -72,6 +72,8 @@ private const val ACTIVE_MAP = "active_map_path"
 private data class MapOverlayState(
     var route: Polyline? = null,
     var marker: FixedPixelCircle? = null,
+    var destinationMarker: FixedPixelCircle? = null,
+    var destinationLine: Polyline? = null,
     var trackSignature: Int = Int.MIN_VALUE,
     var zoomRequest: Int = 0,
     var recenterRequest: Int = 0,
@@ -126,6 +128,8 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var currentLocation by remember { mutableStateOf<Location?>(null) }
     var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
     var followTrack by remember { mutableStateOf(false) }
+    var navigationMode by remember { mutableStateOf("TRACK") }
+    var destination by remember { mutableStateOf<TrackPoint?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
     var interactionToken by remember { mutableIntStateOf(0) }
     var touchLocked by remember { mutableStateOf(false) }
@@ -297,6 +301,18 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     val distanceFromTrack = remember(currentLocation, visibleTrackPoints) {
         currentLocation?.let { distanceToTrackMeters(it.latitude, it.longitude, visibleTrackPoints) }
     }
+    val destinationDistance = remember(currentLocation, destination) {
+        val location = currentLocation
+        val target = destination
+        if (location == null || target == null) null
+        else haversineMeters(location.latitude, location.longitude, target.latitude, target.longitude)
+    }
+    val destinationBearing = remember(currentLocation, destination) {
+        val location = currentLocation
+        val target = destination
+        if (location == null || target == null) null
+        else bearingDegrees(location.latitude, location.longitude, target.latitude, target.longitude)
+    }
 
     MaterialTheme(
         colorScheme = darkColorScheme(
@@ -315,10 +331,18 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                     trackPoints = visibleTrackPoints,
                     waypoints = activeTrack?.waypoints.orEmpty(),
                     currentLocation = currentLocation,
+                    destination = destination,
                     followGps = followTrack,
                     zoomRequest = ui.zoomRequest + mapZoomRequest,
                     recenterRequest = ui.recenterRequest + recenterRequest,
                     onMapTouched = { showControls() },
+                    onMapTap = { point ->
+                        if (navigationMode == "POINT") {
+                            destination = point
+                            status = "Destination set. Guidance is straight-line bearing and distance, not a calculated route."
+                        }
+                        showControls()
+                    },
                     onMapError = { status = it },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -365,8 +389,40 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             RallyMetric("TRACK", activeTrack?.let { formatDistance(it.distanceKm) } ?: "—", Modifier.weight(1f))
-                            RallyMetric("OFF TRACK", distanceFromTrack?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(it / 1000)} km" } ?: "—", Modifier.weight(1f))
+                            if (navigationMode == "TRACK") {
+                                RallyMetric("OFF TRACK", distanceFromTrack?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(Locale.US, it / 1000)} km" } ?: "—", Modifier.weight(1f))
+                            } else {
+                                RallyMetric("TO DESTINATION", destinationDistance?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(Locale.US, it / 1000)} km" } ?: "TAP MAP", Modifier.weight(1f))
+                            }
                             RallyMetric("GPS SPEED", currentLocation?.let { "${(it.speed * 3.6f).toInt()} km/h" } ?: "—", Modifier.weight(1f))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            RallyButton("TRACK FOLLOW", Modifier.weight(1f).height(44.dp), active = navigationMode == "TRACK") {
+                                navigationMode = "TRACK"
+                                destination = null
+                                showControls()
+                            }
+                            RallyButton("POINT TO POINT", Modifier.weight(1f).height(44.dp), active = navigationMode == "POINT") {
+                                navigationMode = "POINT"
+                                followTrack = false
+                                status = "Tap the map to select a destination point."
+                                showControls()
+                            }
+                            if (navigationMode == "POINT" && destination != null) {
+                                RallyButton("CLEAR", Modifier.height(44.dp)) { destination = null; showControls() }
+                            }
+                        }
+                        if (navigationMode == "POINT" && destination != null) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                RallyMetric("BEARING", destinationBearing?.let { "${it.toInt()}°" } ?: "—", Modifier.weight(1f))
+                                RallyMetric("ALTITUDE", currentLocation?.takeIf { it.hasAltitude() }?.let { "${it.altitude.toInt()} m" } ?: "—", Modifier.weight(1f))
+                                RallyMetric("DESTINATION", "SET", Modifier.weight(1f))
+                            }
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                RallyMetric("ALTITUDE", currentLocation?.takeIf { it.hasAltitude() }?.let { "${it.altitude.toInt()} m" } ?: "—", Modifier.weight(1f))
+                                RallyMetric("HEADING", currentLocation?.takeIf { it.hasBearing() && it.speed > 1.5f }?.let { "${it.bearing.toInt()}°" } ?: "—", Modifier.weight(1f))
+                            }
                         }
                     }
 
@@ -381,8 +437,13 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                         }
                         RallyButton("+", Modifier.size(64.dp)) { mapZoomRequest++; showControls() }
                         RallyButton(if (followTrack) "PAUSE" else "FOLLOW", Modifier.weight(1f).height(64.dp), active = followTrack) {
-                            if (activeTrack == null) status = "Import a GPX track before following it."
-                            else followTrack = !followTrack
+                            if (navigationMode != "TRACK") {
+                                status = "Switch to Track Follow mode to follow an imported GPX track."
+                            } else if (activeTrack == null) {
+                                status = "Import a GPX track before following it."
+                            } else {
+                                followTrack = !followTrack
+                            }
                             showControls()
                         }
                     }
@@ -513,10 +574,12 @@ private fun OfflineMapCanvas(
     trackPoints: List<TrackPoint>,
     waypoints: List<TrackWaypoint>,
     currentLocation: Location?,
+    destination: TrackPoint?,
     followGps: Boolean,
     zoomRequest: Int,
     recenterRequest: Int,
     onMapTouched: () -> Unit,
+    onMapTap: (TrackPoint) -> Unit,
     onMapError: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -525,6 +588,8 @@ private fun OfflineMapCanvas(
     val latestTrack by rememberUpdatedState(trackPoints)
     val latestWaypoints by rememberUpdatedState(waypoints)
     val latestLocation by rememberUpdatedState(currentLocation)
+    val latestDestination by rememberUpdatedState(destination)
+    val latestMapTap by rememberUpdatedState(onMapTap)
     val latestFollow by rememberUpdatedState(followGps)
     val lastZoom by rememberUpdatedState(zoomRequest)
     val lastRecenter by rememberUpdatedState(recenterRequest)
@@ -563,13 +628,20 @@ private fun OfflineMapCanvas(
                     }
                     setOnTouchListener { _, event ->
                         if (event.action == android.view.MotionEvent.ACTION_DOWN) latestTouch()
+                        if (event.action == android.view.MotionEvent.ACTION_UP &&
+                            event.pointerCount == 1 && event.eventTime - event.downTime < 450L) {
+                            try {
+                                val tapped = mapViewProjection.fromPixels(event.x.toDouble(), event.y.toDouble())
+                                latestMapTap(TrackPoint(tapped.latitude, tapped.longitude))
+                            } catch (_: Exception) { }
+                        }
                         false
                     }
                 }
             },
             update = { view ->
                 val overlayState = (view.tag as? MapOverlayState) ?: MapOverlayState().also { view.tag = it }
-                val signature = 31 * latestTrack.hashCode() + latestWaypoints.hashCode()
+                val signature = 31 * (31 * latestTrack.hashCode() + latestWaypoints.hashCode()) + (latestDestination?.hashCode() ?: 0)
                 if (overlayState.trackSignature != signature) {
                     overlayState.route?.let { view.layerManager.layers.remove(it) }
                     overlayState.route = null
@@ -603,6 +675,39 @@ private fun OfflineMapCanvas(
                         }
                     }
                     overlayState.trackSignature = signature
+                }
+
+                overlayState.destinationMarker?.let { view.layerManager.layers.remove(it) }
+                overlayState.destinationMarker = null
+                overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
+                overlayState.destinationLine = null
+                latestDestination?.let { target ->
+                    val targetFill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                        setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 215, 255, 53))
+                        setStyle(Style.FILL)
+                    }
+                    val targetOutline = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                        setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLACK))
+                        setStrokeWidth(2f * view.model.displayModel.scaleFactor)
+                        setStyle(Style.STROKE)
+                    }
+                    val targetMarker = FixedPixelCircle(LatLong(target.latitude, target.longitude), 12, targetFill, targetOutline)
+                    view.layerManager.layers.add(targetMarker)
+                    overlayState.destinationMarker = targetMarker
+                    latestLocation?.let { location ->
+                        val bearingPaint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 0, 255, 255))
+                            setStrokeWidth(4f * view.model.displayModel.scaleFactor)
+                            setStyle(Style.STROKE)
+                        }
+                        val bearingLine = Polyline(bearingPaint, AndroidGraphicFactory.INSTANCE)
+                        bearingLine.setPoints(listOf(
+                            LatLong(location.latitude, location.longitude),
+                            LatLong(target.latitude, target.longitude)
+                        ))
+                        view.layerManager.layers.add(bearingLine)
+                        overlayState.destinationLine = bearingLine
+                    }
                 }
 
                 overlayState.marker?.let { view.layerManager.layers.remove(it) }
@@ -845,7 +950,7 @@ private fun RallyMetric(label: String, value: String, modifier: Modifier = Modif
     Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp)) {
         Column(Modifier.padding(9.dp)) {
             Text(label, color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Text(value, color = TextMain, fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            Text(value, color = TextMain, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
         }
     }
 }
@@ -874,6 +979,16 @@ private fun SettingRow(title: String, value: String) {
             Text(value, color = TextMain, fontSize = 14.sp)
         }
     }
+}
+
+private fun bearingDegrees(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
+    val lat1 = Math.toRadians(aLat)
+    val lat2 = Math.toRadians(bLat)
+    val dLon = Math.toRadians(bLon - aLon)
+    val y = kotlin.math.sin(dLon) * kotlin.math.cos(lat2)
+    val x = kotlin.math.cos(lat1) * kotlin.math.sin(lat2) -
+        kotlin.math.sin(lat1) * kotlin.math.cos(lat2) * kotlin.math.cos(dLon)
+    return (Math.toDegrees(kotlin.math.atan2(y, x)) + 360.0) % 360.0
 }
 
 private fun hasLocationPermission(context: Context): Boolean =
