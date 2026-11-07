@@ -434,24 +434,87 @@ private fun haversine(aLat: Double, aLon: Double, bLat: Double, bLon: Double): D
     return 2 * r * asin(sqrt(a.coerceIn(0.0, 1.0)))
 }
 
-private fun fetchRoadRoute(origin: LatLng, destination: LatLng): List<LatLng> {
-    val url = URL("https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson&steps=true")
+private data class RouteManeuver(val instruction: String, val endShapeIndex: Int, val lengthKm: Double)
+private data class ValhallaRoute(val points: List<LatLng>, val maneuvers: List<RouteManeuver>, val distanceKm: Double, val durationMinutes: Double)
+
+private fun fetchValhallaRoute(
+    origin: LatLng,
+    destination: LatLng,
+    avoidTolls: Boolean,
+    avoidHighways: Boolean,
+    preferSecondary: Boolean,
+    surfaceMode: String
+): ValhallaRoute {
+    val useTrails = when(surfaceMode) { "Aventura" -> 0.95; "Misto" -> 0.55; else -> if (preferSecondary) 0.25 else 0.0 }
+    val useTracks = when(surfaceMode) { "Aventura" -> 0.95; "Misto" -> 0.5; else -> 0.0 }
+    val costing = JSONObject()
+        .put("use_highways", if (avoidHighways) 0.05 else 0.5)
+        .put("use_tolls", if (avoidTolls) 0.0 else 0.5)
+        .put("toll_booth_penalty", if (avoidTolls) 43200 else 0)
+        .put("use_trails", useTrails)
+        .put("use_tracks", useTracks)
+    val locations = org.json.JSONArray()
+        .put(JSONObject().put("lat", origin.latitude).put("lon", origin.longitude).put("type", "break"))
+        .put(JSONObject().put("lat", destination.latitude).put("lon", destination.longitude).put("type", "break"))
+    val request = JSONObject()
+        .put("locations", locations)
+        .put("costing", "motorcycle")
+        .put("costing_options", JSONObject().put("motorcycle", costing))
+        .put("units", "kilometers")
+        .put("language", "pt-PT")
+        .put("directions_type", "instructions")
+        .put("format", "json")
+    val url = URL("https://valhalla1.openstreetmap.de/route?json=" + java.net.URLEncoder.encode(request.toString(), "UTF-8"))
     val connection = (url.openConnection() as HttpURLConnection).apply {
         requestMethod = "GET"
-        connectTimeout = 15000
-        readTimeout = 20000
-        setRequestProperty("User-Agent", "MotoTrail-Android/0.3.3")
+        connectTimeout = 20000
+        readTimeout = 30000
+        setRequestProperty("User-Agent", "MotoTrail-Android/0.4.0")
     }
     try {
-        val response = connection.inputStream.bufferedReader().use { it.readText() }
-        val json = JSONObject(response)
-        if (json.optString("code") != "Ok") throw IllegalStateException("No route")
-        val routes = json.getJSONArray("routes")
-        if (routes.length() == 0) throw IllegalStateException("No route")
-        val coords = routes.getJSONObject(0).getJSONObject("geometry").getJSONArray("coordinates")
-        return (0 until coords.length()).map { i ->
-            val pair = coords.getJSONArray(i)
-            LatLng(pair.getDouble(1), pair.getDouble(0))
+        val response = (if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream)
+            .bufferedReader().use { it.readText() }
+        if (connection.responseCode !in 200..299) throw IllegalStateException("Serviço de rotas indisponível")
+        val trip = JSONObject(response).getJSONObject("trip")
+        val legs = trip.getJSONArray("legs")
+        if (legs.length() == 0) throw IllegalStateException("Não foi encontrada uma rota")
+        val leg = legs.getJSONObject(0)
+        val points = decodePolyline6(leg.getString("shape"))
+        if (points.size < 2) throw IllegalStateException("Geometria de rota inválida")
+        val maneuversJson = leg.getJSONArray("maneuvers")
+        val maneuvers = (0 until maneuversJson.length()).map { i ->
+            val item = maneuversJson.getJSONObject(i)
+            RouteManeuver(item.optString("instruction", "Continua em frente"), item.optInt("end_shape_index", 0), item.optDouble("length", 0.0))
         }
+        val summary = trip.getJSONObject("summary")
+        ValhallaRoute(points, maneuvers, summary.optDouble("length", 0.0), summary.optDouble("time", 0.0) / 60.0)
     } finally { connection.disconnect() }
+}
+
+private fun decodePolyline6(encoded: String): List<LatLng> {
+    val result = mutableListOf<LatLng>()
+    var index = 0
+    var lat = 0
+    var lon = 0
+    while (index < encoded.length) {
+        var shift = 0
+        var value = 0
+        var b: Int
+        do {
+            b = encoded[index++].code - 63
+            value = value or ((b and 0x1f) shl shift)
+            shift += 5
+        } while (b >= 0x20 && index < encoded.length)
+        lat += if ((value and 1) != 0) (value shr 1).inv() else (value shr 1)
+        shift = 0
+        value = 0
+        do {
+            b = encoded[index++].code - 63
+            value = value or ((b and 0x1f) shl shift)
+            shift += 5
+        } while (b >= 0x20 && index < encoded.length)
+        lon += if ((value and 1) != 0) (value shr 1).inv() else (value shr 1)
+        result.add(LatLng(lat / 1_000_000.0, lon / 1_000_000.0))
+    }
+    return result
 }
