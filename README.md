@@ -1,55 +1,43 @@
-# MotoTrail Android 0.2.0 — Navigation Foundation
+# TerraTrack Android
 
-Protótipo Android nativo em Kotlin e Jetpack Compose.
+**TerraTrack** is an Android off-road navigation project for adventure motorcycles, SSVs and UTVs. It is designed around long-distance GPX track following, including routes such as the Trans Euro Trail (TET).
 
-## Estado real desta versão
+## Product principles
 
-Implementado no código:
-- Aplicação Android com quatro áreas: Mapa, Percursos, Comunidade e Perfil.
-- Seletor de ficheiros para importar GPX.
-- Leitura XML de pontos GPX.
-- Cálculo aproximado da distância do track.
-- Pedido de permissões de localização e consulta da última posição conhecida.
-- A localização não é enviada para qualquer servidor.
+- Offline-first navigation.
+- Imported GPX tracks remain the source of truth.
+- No automatic route recalculation while following a GPX track.
+- Clear, high-contrast controls designed for use with riding gloves.
+- Location is used on the device and is not uploaded by this prototype.
 
-Ainda não implementado:
-- MapLibre e mapas OpenStreetMap reais.
-- Desenho do track sobre um mapa.
-- Navegação e encaminhamento.
-- Mapas offline.
-- Backend, contas, comunidade online, P2P e SOS.
+## Current milestone: 0.1.0 foundation
 
-## Compilar sem Android Studio
+Implemented:
+- New TerraTrack identity and English interface.
+- Native Android app using Kotlin and Jetpack Compose.
+- Local GPX file import through Android's document picker.
+- Asynchronous GPX parsing, including track and route points.
+- Track distance calculation.
+- Reverse track direction without changing the imported source.
+- Basic foreground GPS updates while the app is open.
+- Straight-line distance from the current GPS fix to the nearest GPX point.
 
-O projeto inclui um workflow GitHub Actions em `.github/workflows/build-apk.yml`.
+Not yet implemented:
+- Offline map renderer and regional map downloads.
+- Drawing GPX geometry on the map.
+- Background GPS foreground service.
+- Rally Mode and rain/touch lock.
+- Bluetooth media-key controls.
+- Offline points of interest and community features.
 
-1. Criar um repositório GitHub vazio.
-2. Extrair este ZIP e carregar todos os ficheiros para o repositório.
-3. Abrir o separador **Actions**.
-4. Executar **Build MotoTrail APK** (ou aguardar a compilação após o push).
-5. Abrir a execução concluída e descarregar o artefacto `MotoTrail-0.2.0-debug`.
-6. Extrair `app-debug.apk` e transferi-lo para o Android.
-7. No telefone, autorizar a instalação dessa origem e instalar o APK.
+## Build
 
-## Compilação local
+The GitHub Actions workflow builds a debug APK on pushes to the `terratrack-rebuild` branch or when manually started.
 
-Requer JDK 17, Android SDK (platform 35 e build-tools 35.0.0) e Gradle 8.9:
+1. Open the repository's **Actions** tab.
+2. Select **Build TerraTrack APK**.
+3. Open the latest run after it completes.
+4. Download the `TerraTrack-0.1.0-debug` artifact.
+5. Extract `app-debug.apk` and install it on an Android device.
 
-```powershell
-gradle :app:assembleDebug
-```
-
-APK esperado:
-`app/build/outputs/apk/debug/app-debug.apk`
-
-## Teste inicial recomendado
-
-- Abrir a aplicação.
-- Consultar a localização com o telefone no exterior.
-- Importar um ficheiro GPX.
-- Confirmar o nome, número de pontos e distância aproximada.
-- Confirmar que a área Comunidade e Perfil identifica claramente as funções ainda não disponíveis.
-
-## Nota
-
-Este projeto não foi compilado nem testado neste ambiente. O workflow remoto foi incluído para gerar o APK sem Android Studio; a compilação só fica confirmada quando uma execução GitHub Actions terminar com sucesso.
+The APK is only considered ready after the GitHub Actions build succeeds.
