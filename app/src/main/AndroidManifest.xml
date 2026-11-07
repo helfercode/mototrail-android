@@ -11,6 +11,8 @@
     <application
         android:allowBackup="true"
         android:label="TerraTrack"
+        android:icon="@drawable/ic_terratrack"
+        android:roundIcon="@drawable/ic_terratrack"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
