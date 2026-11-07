@@ -75,7 +75,7 @@ private val Panel: Color
 private val Panel2: Color
     get() = if (ThemeState.night) Color(0xFF202C25) else Color(0xFFE0E7DE)
 private val Signal: Color
-    get() = if (ThemeState.night) Color(0xFFD7FF35) else Color(0xFFFFE000)
+    get() = if (ThemeState.night) Color(0xFFD7FF35) else Color(0xFF354900)
 private val TrackColor = Color(0xFFFF3030)
 private val TextMain: Color
     get() = if (ThemeState.night) Color(0xFFF7FAF7) else Color(0xFF080D0B)
@@ -474,17 +474,6 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                     onMapError = { status = it },
                     modifier = Modifier.fillMaxSize()
                 )
-
-                if (!controlsVisible && !touchLocked) {
-                    Box(
-                        Modifier.fillMaxSize().pointerInput(Unit) {
-                            awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                showControls()
-                            }
-                        }
-                    )
-                }
 
                 if (controlsVisible && !touchLocked) {
                     Column(
