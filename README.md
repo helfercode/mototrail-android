@@ -1,55 +1,55 @@
 # TerraTrack Android
 
-TerraTrack is an Android off-road navigation application for adventure motorcycles, SSVs and UTVs. It is being built for long-distance GPX travel, including routes such as the Trans Euro Trail (TET).
+TerraTrack is a native Android off-road navigation application for adventure motorcycles, SSVs and UTVs. It is designed for long GPX journeys, including routes such as the Trans Euro Trail (TET).
 
-## Version 0.3.0 features
+## Version 0.4.0 feature set
 
-- Native Android application in Kotlin and Jetpack Compose, with an English interface.
-- Mapsforge offline vector map engine.
-- Import of regional Mapsforge `.map` files, including compatible OpenAndroMaps files.
-- Direct HTTPS download of a `.map` file or a ZIP archive containing one. Downloads are stored locally, with removable app-specific storage preferred when Android exposes it.
-- GPX import and local persistence.
-- GPX parser for track points, route points and waypoints.
-- GPX track geometry drawn over the offline map as a high-visibility red line.
-- GPX waypoint markers shown on the map and listed in the track library.
-- OpenStreetMap POI downloads via Overpass for fuel, drinking water / springs, motorcycle and vehicle workshops, campsites and caravan sites.
-- POIs saved in a local device database file and overlaid on the map for offline use.
-- Configurable POI download radius of 10, 25 or 50 km around the current GPS fix.
-- Track distance and distance to the nearest point on the original GPX geometry.
-- GPX direction reversal without changing the imported source file.
+- Kotlin and Jetpack Compose, with an English interface and a high-contrast Rally layout.
+- Mapsforge offline vector map rendering from local `.map` files, including compatible OpenAndroMaps regional maps.
+- Import a map file from device storage, or download a direct HTTPS `.map` file / ZIP package containing one.
+- Offline GPX import, parsing and local track library.
+- GPX track line, direction chevrons, and GPX waypoints drawn over the offline map.
+- Track distance and nearest distance to the original GPX line, calculated against the line segments rather than just individual points.
+- Reverse track direction for on-screen guidance and background turn guidance without modifying the original GPX file.
 - Track-following mode with no automatic route recalculation.
-- Point-to-point mode: tap the map to set a target and view straight-line distance and bearing. This is compass guidance, not a calculated route.
-- GPS speed, altitude when available, and device compass heading.
-- Rally layout with large controls and map zoom / GPS recenter buttons.
-- Controls hide after inactivity and reappear after a map tap.
-- Touchscreen rain lock with a three-second hold to unlock. Android system navigation remains available.
-- Bluetooth media-key mapping: Volume Up / Down adjusts map zoom, Media Next recentres GPS, and Media Previous switches Map / Recorder.
-- GPX recorder with start, pause, resume and stop.
-- Recording uses an Android location foreground service and a persistent notification, and can continue with the screen off while the service is active.
-- Recorded GPX includes timestamped GPS points and altitude when the device supplies it. Paused sections are stored as separate GPX track segments.
-- Saved recording list and GPX export through Android's document picker.
-- GPX navigation, imported tracks and recordings are stored and processed locally. A user-initiated Overpass POI search transmits the current centre coordinates and chosen radius to the public Overpass endpoint so it can return nearby places. The resulting POIs are stored locally. No user account or continuous location tracking server is implemented.
+- Background GPX navigation through a location foreground service, including a persistent notification.
+- Off-track warning when the GPS position is more than 50 metres from the GPX line; the warning clears below 40 metres to reduce GPS jitter.
+- Ahead-of-turn notifications (left / right) derived from changes in the geometry of the GPX line. These are geometric guidance cues, not road-network turn-by-turn routing.
+- Point-to-point mode: tap the map or select a saved POI to show straight-line bearing and distance. It does not calculate a traversable route.
+- GPS speed, altitude when available and device compass heading.
+- Rally controls sized for glove use, automatic control hiding, GPS recenter and map zoom.
+- Rain / touchscreen lock with a three-second hold to unlock. Android system navigation remains available.
+- Day / Night / Auto theme, using the ambient light sensor when available and local time as a fallback.
+- Standard Android media-key mapping: Volume Up / Down adjusts map zoom, Media Next recentres GPS, Media Previous switches between Map and Recorder.
+- GPX recording with Start, Pause, Resume and Stop, including a running duration, distance and point count.
+- Recording runs in a location foreground service with a persistent notification while the screen is off, subject to Android permissions and device battery policy.
+- Recorded GPX includes timestamped GPS points and altitude when available. Paused intervals become separate GPX track segments.
+- Import, reverse, export and share GPX files through Android's document picker and Sharesheet.
+- Offline POI download via OpenStreetMap Overpass for fuel, drinking water / springs, motorcycle and vehicle workshops, campsites and caravan sites. Choose a 10, 25 or 50 km search radius around the current GPS fix.
+- POI results are saved locally, overlaid on the map, can be hidden with a map control, and can be selected as point-to-point destinations.
+- The optional Overpass lookup sends the current centre coordinates and selected radius to the public Overpass service. GPX navigation and local track recordings are not uploaded.
 
-## Known limitations and validation still required
+## Current limits and real-device testing required
 
-- Maps are imported or downloaded from a direct provider URL. There is no built-in regional catalogue or automatic discovery of OpenAndroMaps downloads.
-- Map display uses the built-in Mapsforge Motorider theme. Importing separate external render themes is not implemented.
-- GPX waypoints work as local POIs, but dedicated fuel, water, workshop and campsite datasets, categories and filters are not included yet.
-- Point-to-point mode displays straight-line distance and bearing. It does not calculate a traversable path.
-- No direction arrows along the GPX line, turn-point warnings or configurable off-track alerts are included yet.
-- There is no enforced 30 FPS renderer limit, adaptive day/night mode or hillshade layer yet.
-- Bluetooth commands are mapped through standard Android key events. Carpe Iter, WunderLINQ and other hardware-specific commands still need tests with the actual controllers.
-- Background recording depends on Android permissions, location settings and battery-management policy. Start recording while the app is visible and after granting location permission.
-- Community accounts, route publishing, group functions and P2P sharing are not included in this version.
+- Maps must be imported or downloaded using a direct provider URL. There is no built-in regional map catalogue or automatic OpenAndroMaps region discovery.
+- Map style uses the built-in Mapsforge Motorider render theme. Importing a separate render theme or custom contour / DEM layers is not implemented.
+- Hillshade and a hard 30 FPS cap are not implemented.
+- The POI download relies on the public Overpass service and needs connectivity at download time. Saved POIs are available offline afterwards.
+- Point-to-point navigation is a straight-line compass aid, not road or trail routing.
+- Turn notifications are inferred from GPX geometry. Dense or noisy tracks can produce imperfect turn cues; the GPX itself remains authoritative.
+- Android may restrict background location or notifications according to the user's permissions, battery settings and device manufacturer. Start recording or GPX navigation from the visible app after granting location access.
+- Bluetooth mapping uses standard Android key events. Carpe Iter, WunderLINQ and other hardware remotes need verification on the actual controller and phone.
+- There is no community account system, hosted route publishing, group tracking or P2P communication backend in this build.
+- The source has not yet been confirmed by a successful Android APK build or by testing on physical hardware. GPS accuracy, SD-card availability, map display, notifications and Bluetooth controls all require device validation.
 
 ## Build the APK
 
-A GitHub Actions workflow builds the debug APK on pushes to the `terratrack-rebuild` branch.
+A GitHub Actions workflow builds the debug APK when code is pushed to the `terratrack-rebuild` branch.
 
 1. Open the repository's **Actions** tab.
 2. Select **Build TerraTrack APK**.
-3. Open the latest completed run.
-4. Download the `TerraTrack-0.3.0-debug` artifact.
+3. Open the latest run after it finishes.
+4. Download the `TerraTrack-0.4.0-debug` artifact.
 5. Extract `app-debug.apk` and install it on an Android device.
 
-A successful code upload is not proof of a successful APK build. Install the APK only after GitHub Actions reports a successful build.
+A successful code upload is not proof of a successful APK build. The APK should only be installed after GitHub Actions reports a successful build.
