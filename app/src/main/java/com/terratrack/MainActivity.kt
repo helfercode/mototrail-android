@@ -150,6 +150,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var lastRecordingPath by remember { mutableStateOf(preferences.getString(RecordingService.KEY_LAST_FILE, null)) }
     var savedRecordings by remember { mutableStateOf<List<File>>(emptyList()) }
     var savedMaps by remember { mutableStateOf<List<File>>(emptyList()) }
+    var mapDownloadUrl by remember { mutableStateOf("") }
     var pendingRecordName by remember { mutableStateOf<String?>(null) }
     var pendingExportPath by remember { mutableStateOf<String?>(null) }
     var mapZoomRequest by remember { mutableIntStateOf(0) }
@@ -580,7 +581,31 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                 maps = savedMaps,
                 busy = importBusy,
                 status = status,
+                downloadUrl = mapDownloadUrl,
+                onDownloadUrlChange = { mapDownloadUrl = it },
                 onImport = { mapPicker.launch(arrayOf("*/*")) },
+                onDownload = {
+                    if (mapDownloadUrl.isBlank()) {
+                        status = "Paste a direct HTTPS link to a Mapsforge .map file or a ZIP containing one."
+                    } else {
+                        importBusy = true
+                        scope.launch {
+                            try {
+                                val downloaded = withContext(Dispatchers.IO) { downloadMapFile(context, mapDownloadUrl) }
+                                activeMapPath = downloaded.absolutePath
+                                preferences.edit().putString(ACTIVE_MAP, activeMapPath).apply()
+                                savedMaps = listMapFiles(context)
+                                status = "Offline map downloaded: ${downloaded.name}"
+                                ui.selectedTab = "MAP"
+                                showControls()
+                            } catch (error: Exception) {
+                                status = "Map download failed: ${error.message ?: "download error"}"
+                            } finally {
+                                importBusy = false
+                            }
+                        }
+                    }
+                },
                 onSelect = { file ->
                     activeMapPath = file.absolutePath
                     preferences.edit().putString(ACTIVE_MAP, activeMapPath).apply()
@@ -920,7 +945,10 @@ private fun MapsScreen(
     maps: List<File>,
     busy: Boolean,
     status: String,
+    downloadUrl: String,
+    onDownloadUrlChange: (String) -> Unit,
     onImport: () -> Unit,
+    onDownload: () -> Unit,
     onSelect: (File) -> Unit,
     onBack: () -> Unit
 ) {
@@ -930,6 +958,27 @@ private fun MapsScreen(
         Button(onClick = onImport, modifier = Modifier.fillMaxWidth().height(58.dp), enabled = !busy) {
             Text(if (busy) "IMPORTING MAP…" else "IMPORT OFFLINE MAP FILE", fontWeight = FontWeight.Black)
         }
+        OutlinedTextField(
+            value = downloadUrl,
+            onValueChange = onDownloadUrlChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Direct HTTPS map or ZIP URL") },
+            placeholder = { Text("https://…/region.map") },
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextMain,
+                unfocusedTextColor = TextMain,
+                focusedBorderColor = Signal,
+                unfocusedBorderColor = TextMuted,
+                focusedLabelColor = Signal,
+                unfocusedLabelColor = TextMuted
+            )
+        )
+        OutlinedButton(onClick = onDownload, modifier = Modifier.fillMaxWidth().height(54.dp), enabled = !busy) {
+            Text("DOWNLOAD FOR OFFLINE USE", fontWeight = FontWeight.Bold)
+        }
+        Text("Use a direct download link from a map provider. TerraTrack does not host or mirror map data.", color = TextMuted, fontSize = 11.sp)
         Text("ACTIVE MAP", color = Signal, fontSize = 13.sp, fontWeight = FontWeight.Black)
         Text(currentMap?.name ?: "No offline map selected", color = TextMain, fontSize = 15.sp)
         Text("MAPS ON THIS DEVICE", color = Signal, fontSize = 13.sp, fontWeight = FontWeight.Black)
@@ -1065,6 +1114,84 @@ private fun copyUriIntoAppFolder(context: Context, uri: Uri, folder: String, fil
     } ?: throw IllegalStateException("Could not open selected file.")
     require(destination.length() > 0L) { "Selected file is empty." }
     return destination
+}
+
+private fun downloadMapFile(context: Context, address: String): File {
+    val url = java.net.URL(address.trim())
+    require(url.protocol.equals("https", true)) { "Only HTTPS map downloads are accepted." }
+    val connection = (url.openConnection() as java.net.HttpURLConnection).apply {
+        connectTimeout = 20000
+        readTimeout = 60000
+        instanceFollowRedirects = true
+        setRequestProperty("User-Agent", "TerraTrack-Android/0.2.0")
+    }
+    val directory = appFolder(context, "maps")
+    return try {
+        connection.connect()
+        require(connection.responseCode in 200..299) { "Map server returned HTTP ${connection.responseCode}." }
+        val sourceName = url.path.substringAfterLast('/').ifBlank { "regional_map.map" }
+        val isZip = sourceName.endsWith(".zip", true) ||
+            connection.contentType?.contains("zip", true) == true
+        if (connection.contentLengthLong > 2_000_000_000L) {
+            throw IllegalStateException("Map download exceeds the 2 GB safety limit.")
+        }
+
+        if (isZip) {
+            var extracted: File? = null
+            java.util.zip.ZipInputStream(connection.inputStream.buffered()).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null && extracted == null) {
+                    if (!entry.isDirectory && entry.name.endsWith(".map", true)) {
+                        val target = File(directory, safeFileName(entry.name.substringAfterLast('/')))
+                        var copied = 0L
+                        FileOutputStream(target).use { output ->
+                            val buffer = ByteArray(1024 * 256)
+                            while (true) {
+                                val count = zip.read(buffer)
+                                if (count < 0) break
+                                copied += count
+                                if (copied > 2_000_000_000L) throw IllegalStateException("Extracted map exceeds the 2 GB safety limit.")
+                                output.write(buffer, 0, count)
+                            }
+                        }
+                        extracted = target
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+            }
+            extracted ?: throw IllegalStateException("The ZIP archive does not contain a Mapsforge .map file.")
+        } else {
+            require(sourceName.endsWith(".map", true)) { "The download URL must point to a .map file or ZIP archive." }
+            val target = File(directory, safeFileName(sourceName))
+            var copied = 0L
+            connection.inputStream.use { input ->
+                FileOutputStream(target).use { output ->
+                    val buffer = ByteArray(1024 * 256)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        copied += count
+                        if (copied > 2_000_000_000L) throw IllegalStateException("Map download exceeds the 2 GB safety limit.")
+                        output.write(buffer, 0, count)
+                    }
+                }
+            }
+            target
+        }
+    } finally {
+        connection.disconnect()
+    }.also { file ->
+        require(file.exists() && file.length() > 1024L) { "Downloaded file is empty or too small to be a map." }
+        val input = FileInputStream(file)
+        try {
+            val map = MapFile(input)
+            map.startPosition()
+        } catch (error: Exception) {
+            file.delete()
+            throw IllegalStateException("Downloaded file is not a valid Mapsforge map: ${error.message}")
+        }
+    }
 }
 
 private fun listRecordingFiles(context: Context): List<File> =
