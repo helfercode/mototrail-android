@@ -614,6 +614,14 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                     poiCategories = if (enabled) poiCategories + category else poiCategories - category
                 },
                 onRadiusChange = { poiRadius = it },
+                onSelectPoi = { poi ->
+                    destination = TrackPoint(poi.latitude, poi.longitude)
+                    navigationMode = "POINT"
+                    followTrack = false
+                    ui.selectedTab = "MAP"
+                    status = "Destination set to ${poi.name}. Straight-line guidance only."
+                    showControls()
+                },
                 onDownload = {
                     val location = currentLocation
                     if (location == null) {
@@ -1054,6 +1062,7 @@ private fun OfflinePoiScreen(
     onCategoryChange: (String, Boolean) -> Unit,
     onRadiusChange: (Int) -> Unit,
     onDownload: () -> Unit,
+    onSelectPoi: (OfflinePoi) -> Unit,
     onBack: () -> Unit
 ) {
     val categoryOptions = listOf(
@@ -1146,7 +1155,7 @@ private fun OfflinePoiScreen(
                             Text(poi.name, color = TextMain, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Text(poi.category.uppercase(Locale.US), color = TextMuted, fontSize = 9.sp)
                         }
-                        TextButton(onClick = { onBack() }) { Text("MAP", color = Signal) }
+                        TextButton(onClick = { onSelectPoi(poi) }) { Text("GO", color = Signal, fontWeight = FontWeight.Black) }
                     }
                 }
             }
