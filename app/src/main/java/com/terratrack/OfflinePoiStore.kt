@@ -120,7 +120,8 @@ object OfflinePoiStore {
             val body = "data=" + URLEncoder.encode(query, StandardCharsets.UTF_8.name())
             connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
             val code = connection.responseCode
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val stream = if (code in 200..299) connection.inputStream else
+                connection.errorStream ?: throw IllegalStateException("Overpass returned HTTP $code without an error message.")
             val response = stream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
             if (code !in 200..299) throw IllegalStateException("Overpass returned HTTP $code.")
             parseOverpass(response)
