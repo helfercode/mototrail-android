@@ -249,11 +249,6 @@ private fun MapPanel(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     FilledTonalButton(onClick = { onOpenPage("Percursos"); showControls() }) { Text("Percursos") }
                     FilledTonalButton(onClick = { onOpenPage("Comunidade"); showControls() }) { Text("Comunidade") }
-                    FilledTonalIconButton(onClick = { onRequestLocation(); showControls() }) { Text("⌖") }
-                    FilledTonalIconButton(onClick = {
-                        currentLocation?.let { map?.cameraPosition = CameraPosition.Builder().target(it).zoom(16.0).bearing(0.0).tilt(0.0).build() } ?: onRequestLocation()
-                        showControls()
-                    }) { Text("◎") }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     SingleChoiceSegmentedButtonRow {
