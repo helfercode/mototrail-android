@@ -983,7 +983,7 @@ private fun MapsScreen(
         Text(currentMap?.name ?: "No offline map selected", color = TextMain, fontSize = 15.sp)
         Text("MAPS ON THIS DEVICE", color = Signal, fontSize = 13.sp, fontWeight = FontWeight.Black)
         if (maps.isEmpty()) Text("No map files imported yet.", color = TextMuted)
-        else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(maps, key = { it.absolutePath }) { file ->
                 Surface(color = Panel, shape = RoundedCornerShape(8.dp)) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1126,7 +1126,7 @@ private fun downloadMapFile(context: Context, address: String): File {
         setRequestProperty("User-Agent", "TerraTrack-Android/0.2.0")
     }
     val directory = appFolder(context, "maps")
-    return try {
+    val downloadedFile = try {
         connection.connect()
         require(connection.responseCode in 200..299) { "Map server returned HTTP ${connection.responseCode}." }
         val sourceName = url.path.substringAfterLast('/').ifBlank { "regional_map.map" }
@@ -1181,12 +1181,11 @@ private fun downloadMapFile(context: Context, address: String): File {
         }
     } finally {
         connection.disconnect()
-    }.also { file ->
+    }
+    return downloadedFile.also { file ->
         require(file.exists() && file.length() > 1024L) { "Downloaded file is empty or too small to be a map." }
-        val input = FileInputStream(file)
         try {
-            val map = MapFile(input)
-            map.startPosition()
+            FileInputStream(file).use { input -> MapFile(input).startPosition() }
         } catch (error: Exception) {
             file.delete()
             throw IllegalStateException("Downloaded file is not a valid Mapsforge map: ${error.message}")
