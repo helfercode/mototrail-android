@@ -30,6 +30,7 @@ class TrackNavigationService : Service() {
     private var trackPoints: List<TrackPoint> = emptyList()
     private var lastAlertElapsed = 0L
     private var wasOffTrack = false
+    private var lastTurnIndex = -1
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -74,6 +75,7 @@ class TrackNavigationService : Service() {
                 val parsed = FileInputStream(file).use { parseGpx(it, file.name) }
                 mainHandler.post {
                     trackPoints = parsed.points
+                    lastTurnIndex = preferences.getInt(KEY_LAST_TURN_INDEX, -1)
                     preferences.edit()
                         .putString(KEY_TRACK_NAME, parsed.name)
                         .putString(KEY_STATUS, "Following ${parsed.name}")
@@ -107,12 +109,21 @@ class TrackNavigationService : Service() {
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 if (trackPoints.size < 2) return
-                val distance = distanceToTrackMeters(location.latitude, location.longitude, trackPoints) ?: return
+                val progress = trackProgress(location.latitude, location.longitude, trackPoints) ?: return
                 preferences.edit()
-                    .putFloat(KEY_DISTANCE_METERS, distance.toFloat())
+                    .putFloat(KEY_DISTANCE_METERS, progress.distanceMeters.toFloat())
                     .putLong(KEY_LAST_FIX_TIME, System.currentTimeMillis())
                     .apply()
-                handleOffTrack(distance)
+                handleOffTrack(progress.distanceMeters)
+                if (progress.distanceMeters <= OFF_TRACK_LIMIT_METERS) {
+                    nextRouteTurn(trackPoints, progress, TURN_LOOKAHEAD_METERS)?.let { turn ->
+                        if (turn.distanceAlongTrackMeters <= TURN_ALERT_METERS && turn.segmentIndex != lastTurnIndex) {
+                            lastTurnIndex = turn.segmentIndex
+                            preferences.edit().putInt(KEY_LAST_TURN_INDEX, lastTurnIndex).apply()
+                            showTurnAlert(turn.direction, turn.distanceAlongTrackMeters)
+                        }
+                    }
+                }
             }
         }
         locationListener = listener
@@ -145,7 +156,7 @@ class TrackNavigationService : Service() {
                 showOffTrackAlert(distanceMeters)
             }
             wasOffTrack = true
-        } else {
+        } else if (distanceMeters < ON_TRACK_RESET_METERS) {
             preferences.edit()
                 .putBoolean(KEY_OFF_TRACK, false)
                 .putString(KEY_STATUS, "On original GPX track")
@@ -157,6 +168,22 @@ class TrackNavigationService : Service() {
         }
     }
 
+    private fun showTurnAlert(direction: String, distanceMeters: Double) {
+        val message = "$direction turn in ${distanceMeters.toInt()} metres."
+        val notification = NotificationCompat.Builder(this, OFF_TRACK_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_menu_directions)
+            .setContentTitle("TERRATRACK · TURN AHEAD")
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$message Direction derived from the geometry of the selected GPX track."))
+            .setContentIntent(notificationIntent())
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setAutoCancel(true)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(TURN_NOTIFICATION_ID, notification)
+        preferences.edit().putString(KEY_STATUS, message).apply()
+    }
+
     private fun stopNavigation() {
         removeGpsUpdates()
         preferences.edit()
@@ -165,6 +192,7 @@ class TrackNavigationService : Service() {
             .putString(KEY_STATUS, "GPX navigation stopped")
             .apply()
         getSystemService(NotificationManager::class.java).cancel(OFF_TRACK_NOTIFICATION_ID)
+        getSystemService(NotificationManager::class.java).cancel(TURN_NOTIFICATION_ID)
         stopForegroundCompat()
         stopSelf()
     }
@@ -264,6 +292,7 @@ class TrackNavigationService : Service() {
         const val KEY_DISTANCE_METERS = "navigation_distance_m"
         const val KEY_LAST_FIX_TIME = "navigation_last_fix_time"
         const val KEY_STATUS = "navigation_status"
+        const val KEY_LAST_TURN_INDEX = "navigation_last_turn_index"
 
         private const val ACTION_START = "com.terratrack.navigation.START"
         private const val ACTION_STOP = "com.terratrack.navigation.STOP"
@@ -273,7 +302,11 @@ class TrackNavigationService : Service() {
         private const val NOTIFICATION_ID = 4413
         private const val ONGOING_NOTIFICATION_ID = 4413
         private const val OFF_TRACK_NOTIFICATION_ID = 4414
+        private const val TURN_NOTIFICATION_ID = 4415
         private const val OFF_TRACK_LIMIT_METERS = 50.0
+        private const val ON_TRACK_RESET_METERS = 40.0
+        private const val TURN_LOOKAHEAD_METERS = 250.0
+        private const val TURN_ALERT_METERS = 120.0
         private const val ALERT_INTERVAL_MS = 90000L
 
         fun start(context: Context, trackPath: String) {
