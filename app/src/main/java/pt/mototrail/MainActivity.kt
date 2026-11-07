@@ -246,9 +246,9 @@ private fun MapPanel(
                     }) { Text("◎") }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    SingleChoiceSegmentedButtonRow(count = 2) {
-                        SegmentedButton(mode == "Destino", { mode = "Destino"; showControls() }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("Navegar até destino") }
-                        SegmentedButton(mode == "GPX", { mode = "GPX"; showControls() }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("Navegação livre") }
+                    SingleChoiceSegmentedButtonRow {
+                        SegmentedButton(mode == "Destino", { mode = "Destino"; showControls() }, SegmentedButtonDefaults.itemShape(index = 0, count = 2)) { Text("Navegar até destino") }
+                        SegmentedButton(mode == "GPX", { mode = "GPX"; showControls() }, SegmentedButtonDefaults.itemShape(index = 1, count = 2)) { Text("Navegação livre") }
                     }
                 }
                 if (mode == "GPX") {
