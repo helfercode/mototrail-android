@@ -14,6 +14,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
@@ -37,6 +38,15 @@ class RecordingService : Service() {
     private var segmentStartElapsed = 0L
     private var totalDistanceMeters = 0.0
     private var pointCount = 0
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val elapsedTicker = object : Runnable {
+        override fun run() {
+            if (preferences.getString(KEY_STATE, STATE_IDLE) == STATE_RECORDING && segmentOpen) {
+                updateElapsed()
+                mainHandler.postDelayed(this, 1000L)
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -236,10 +246,13 @@ class RecordingService : Service() {
         segmentOpen = true
         segmentStartElapsed = SystemClock.elapsedRealtime()
         preferences.edit().putString(KEY_STATE, STATE_RECORDING).apply()
+        mainHandler.removeCallbacks(elapsedTicker)
+        mainHandler.postDelayed(elapsedTicker, 1000L)
     }
 
     private fun closeSegment() {
         if (!segmentOpen) return
+        mainHandler.removeCallbacks(elapsedTicker)
         writeText("</trkseg>\n")
         segmentOpen = false
         updateElapsed()
@@ -327,6 +340,7 @@ class RecordingService : Service() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(elapsedTicker)
         removeGpsUpdates()
         if (segmentOpen) {
             try {
