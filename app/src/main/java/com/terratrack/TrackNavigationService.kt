@@ -49,7 +49,7 @@ class TrackNavigationService : Service() {
                     stopSelf()
                 } else {
                     startForegroundCompat(buildOngoingNotification("Loading original GPX track…"))
-                    loadTrack(path)
+                    loadTrack(path, reversed = intent.getBooleanExtra(EXTRA_REVERSED, false), resetTurns = true)
                 }
             }
             ACTION_STOP -> stopNavigation()
