@@ -119,7 +119,7 @@ fun MotoTrailApp() {
                         else Card { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(track.name, fontWeight = FontWeight.Bold)
                             Text("%.1f km · %d pontos".format(track.distanceKm, track.points))
-                            Text("O percurso pode ser seguido no modo GPX livre.")
+                            Text("O percurso pode ser seguido no modo Navegação livre.")
                         } }
                     }
                     "Comunidade" -> { Text("Comunidade", style = MaterialTheme.typography.headlineSmall); InfoCard("Em preparação.", "Grupos, viagens, pontos de encontro e entreajuda serão desenvolvidos mais tarde.") }
@@ -241,9 +241,9 @@ private fun MapPanel(
                     }) { Text("◎") }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    SingleChoiceSegmentedButtonRow {
+                    SingleChoiceSegmentedButtonRow(count = 2) {
                         SegmentedButton(mode == "Destino", { mode = "Destino"; showControls() }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("Navegar até destino") }
-                        SegmentedButton(mode == "GPX", { mode = "GPX"; showControls() }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("Seguir GPX livre") }
+                        SegmentedButton(mode == "GPX", { mode = "GPX"; showControls() }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("Navegação livre") }
                     }
                 }
                 if (mode == "GPX") {
