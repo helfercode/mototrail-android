@@ -290,8 +290,8 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
         }
     }
 
-    DisposableEffect(locationAllowed) {
-        if (!locationAllowed) {
+    DisposableEffect(locationAllowed, ui.selectedTab) {
+        if (!locationAllowed || (ui.selectedTab != "MAP" && ui.selectedTab != "POI")) {
             onDispose { }
         } else {
             val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -513,6 +513,19 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                             Text("Android system navigation remains available.", color = TextMuted, fontSize = 12.sp)
                         }
                     }
+                }
+
+                Surface(
+                    Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                    color = Panel.copy(alpha = 0.88f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        "© OpenStreetMap contributors",
+                        Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                        color = TextMuted,
+                        fontSize = 9.sp
+                    )
                 }
 
                 if (status.isNotBlank()) {
@@ -1122,12 +1135,12 @@ private fun OfflinePoiScreen(
         Button(
             onClick = onDownload,
             modifier = Modifier.fillMaxWidth().height(58.dp),
-            enabled = !busy && currentLocation != null && categories.isNotEmpty()
+            enabled = !busy && categories.isNotEmpty()
         ) {
             Text(if (busy) "DOWNLOADING POI…" else "DOWNLOAD AROUND GPS", fontWeight = FontWeight.Black)
         }
         Text(
-            "OpenStreetMap data via Overpass API. Downloading requires an Internet connection; navigation uses the saved local copy.",
+            "OpenStreetMap data via Overpass API. A download sends your current coordinates and search radius to Overpass. The saved POIs are then available offline.",
             color = TextMuted,
             fontSize = 10.sp
         )
