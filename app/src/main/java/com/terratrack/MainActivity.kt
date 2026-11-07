@@ -509,6 +509,22 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                             ) { Text("LOCK", fontSize = 10.sp, fontWeight = FontWeight.Black) }
                         }
 
+                        val currentOffTrackDistance = distanceFromTrack ?: navigationDistance.takeIf { it.isFinite() }?.toDouble()
+                        if (followTrack && (navigationOffTrack || (currentOffTrackDistance != null && currentOffTrackDistance > 50.0))) {
+                            Surface(
+                                Modifier.fillMaxWidth(),
+                                color = TrackColor,
+                                shape = RoundedCornerShape(9.dp)
+                            ) {
+                                Text(
+                                    "OFF TRACK  ·  ${currentOffTrackDistance?.toInt() ?: 50} m FROM ORIGINAL GPX",
+                                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    color = Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             RallyMetric("TRACK", activeTrack?.let { formatDistance(it.distanceKm) } ?: "—", Modifier.weight(1f))
                             if (navigationMode == "TRACK") {
@@ -877,8 +893,8 @@ private fun OfflineMapCanvas(
                             val layer = TileRendererLayer(cache, dataStore, model.mapViewPosition, AndroidGraphicFactory.INSTANCE)
                             layer.setXmlRenderTheme(MapsforgeThemes.MOTORIDER)
                             layerManager.layers.add(layer)
-                            setCenter(dataStore.startPosition())
-                            setZoomLevel(dataStore.startZoomLevel())
+                            setCenter(dataStore.startPosition() ?: LatLong(39.6, -8.0))
+                            setZoomLevel(dataStore.startZoomLevel() ?: 6.toByte())
                         } catch (error: Exception) {
                             latestError("Unable to open offline map: ${error.message ?: "invalid Mapsforge map"}")
                             setCenter(LatLong(39.6, -8.0))
