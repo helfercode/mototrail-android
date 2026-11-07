@@ -60,14 +60,25 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.Locale
+import java.util.Calendar
 
-private val Night = Color(0xFF050806)
-private val Panel = Color(0xFF151E19)
-private val Panel2 = Color(0xFF202C25)
-private val Signal = Color(0xFFD7FF35)
+private object ThemeState {
+    var night by mutableStateOf(true)
+}
+
+private val Night: Color
+    get() = if (ThemeState.night) Color(0xFF050806) else Color(0xFFFFFFFF)
+private val Panel: Color
+    get() = if (ThemeState.night) Color(0xFF151E19) else Color(0xFFF0F3EE)
+private val Panel2: Color
+    get() = if (ThemeState.night) Color(0xFF202C25) else Color(0xFFE0E7DE)
+private val Signal: Color
+    get() = if (ThemeState.night) Color(0xFFD7FF35) else Color(0xFFFFE000)
 private val TrackColor = Color(0xFFFF3030)
-private val TextMain = Color(0xFFF7FAF7)
-private val TextMuted = Color(0xFFB7C2BB)
+private val TextMain: Color
+    get() = if (ThemeState.night) Color(0xFFF7FAF7) else Color(0xFF080D0B)
+private val TextMuted: Color
+    get() = if (ThemeState.night) Color(0xFFB7C2BB) else Color(0xFF36423A)
 
 private const val STATE_PREFS = "terratrack_state"
 private const val ACTIVE_TRACK = "active_track_path"
@@ -164,6 +175,8 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var poiCategories by remember { mutableStateOf(setOf("fuel", "water", "repair", "camping")) }
     var poiRadius by remember { mutableIntStateOf(25000) }
     var mapDownloadUrl by remember { mutableStateOf("") }
+    var themeMode by remember { mutableStateOf(preferences.getString("theme_mode", "AUTO") ?: "AUTO") }
+    var ambientLux by remember { mutableFloatStateOf(Float.NaN) }
     var pendingRecordName by remember { mutableStateOf<String?>(null) }
     var pendingExportPath by remember { mutableStateOf<String?>(null) }
     var mapZoomRequest by remember { mutableIntStateOf(0) }
@@ -267,6 +280,43 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                 } catch (error: Exception) {
                     recordingStatus = "GPX export failed: ${error.message}"
                 }
+            }
+        }
+    }
+
+    DisposableEffect(themeMode) {
+        if (themeMode != "AUTO") {
+            ThemeState.night = themeMode == "NIGHT"
+            onDispose { }
+        } else {
+            val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            val lightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
+            if (lightSensor == null) {
+                onDispose { }
+            } else {
+                val listener = object : SensorEventListener {
+                    override fun onSensorChanged(event: SensorEvent) {
+                        ambientLux = event.values.firstOrNull() ?: Float.NaN
+                        if (ambientLux.isFinite()) ThemeState.night = ambientLux < 25f
+                    }
+                    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+                }
+                sensorManager.registerListener(listener, lightSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                onDispose { sensorManager.unregisterListener(listener) }
+            }
+        }
+    }
+
+    LaunchedEffect(themeMode) {
+        if (themeMode == "AUTO") {
+            while (true) {
+                val hasLightSensor = context.getSystemService(Context.SENSOR_SERVICE)
+                    .let { (it as SensorManager).getDefaultSensor(Sensor.TYPE_LIGHT) != null }
+                if (!hasLightSensor) {
+                    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+                    ThemeState.night = hour < 7 || hour >= 20
+                }
+                delay(60000L)
             }
         }
     }
@@ -375,8 +425,8 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
         else bearingDegrees(location.latitude, location.longitude, target.latitude, target.longitude)
     }
 
-    MaterialTheme(
-        colorScheme = darkColorScheme(
+    val appColorScheme = if (ThemeState.night) {
+        darkColorScheme(
             primary = Signal,
             onPrimary = Night,
             secondary = TrackColor,
@@ -384,7 +434,18 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
             surface = Panel,
             onSurface = TextMain
         )
-    ) {
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF273900),
+            onPrimary = Color.White,
+            secondary = TrackColor,
+            background = Night,
+            surface = Panel,
+            onSurface = TextMain
+        )
+    }
+
+    MaterialTheme(colorScheme = appColorScheme) {
         when (ui.selectedTab) {
             "MAP" -> Box(Modifier.fillMaxSize().background(Night)) {
                 OfflineMapCanvas(
@@ -756,7 +817,12 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
             else -> SettingsScreen(
                 onBack = { ui.selectedTab = "MAP" },
                 onImportMap = { ui.selectedTab = "MAPS" },
-                onImportTrack = { ui.selectedTab = "TRACKS" }
+                onImportTrack = { ui.selectedTab = "TRACKS" },
+                themeMode = themeMode,
+                onThemeModeChange = {
+                    themeMode = it
+                    preferences.edit().putString("theme_mode", it).apply()
+                }
             )
         }
     }
@@ -1309,7 +1375,9 @@ private fun MapsScreen(
 private fun SettingsScreen(
     onBack: () -> Unit,
     onImportMap: () -> Unit,
-    onImportTrack: () -> Unit
+    onImportTrack: () -> Unit,
+    themeMode: String,
+    onThemeModeChange: (String) -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(Night).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ScreenHeader("SETTINGS", onBack)
@@ -1319,6 +1387,24 @@ private fun SettingsScreen(
         SettingRow("Rally controls", "Large controls, zoom keys and GPS recenter")
         SettingRow("Touch protection", "Rain lock with 3-second hold to unlock")
         SettingRow("Bluetooth remotes", "Volume keys: zoom. Media next: recenter. Media previous: switch Map / Recorder.")
+        Text("DISPLAY THEME", color = Signal, fontSize = 12.sp, fontWeight = FontWeight.Black)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("AUTO", "DAY", "NIGHT").forEach { option ->
+                OutlinedButton(
+                    onClick = { onThemeModeChange(option) },
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (themeMode == option) Signal else Panel,
+                        contentColor = if (themeMode == option) Night else TextMain
+                    )
+                ) { Text(option, fontWeight = FontWeight.Black) }
+            }
+        }
+        Text(
+            if (themeMode == "AUTO") "Automatic mode uses the ambient light sensor. If unavailable, it switches by local time (07:00–20:00 day)." else "Theme is manually set to ${themeMode.lowercase(Locale.US)} mode.",
+            color = TextMuted,
+            fontSize = 11.sp
+        )
         OutlinedButton(onClick = onImportMap, modifier = Modifier.fillMaxWidth()) { Text("MANAGE OFFLINE MAPS") }
         OutlinedButton(onClick = onImportTrack, modifier = Modifier.fillMaxWidth()) { Text("OPEN GPX TRACK LIBRARY") }
         Text("Offline POI packages, turn-point warnings, richer compass presentation and community sharing are not yet included in this build.", color = TextMuted, fontSize = 12.sp)
