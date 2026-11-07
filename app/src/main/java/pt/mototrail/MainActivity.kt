@@ -25,6 +25,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
@@ -151,6 +157,10 @@ private fun MapPanel(
     var mode by remember { mutableStateOf("Destino") }
     var destination by remember { mutableStateOf<LatLng?>(null) }
     var distance by remember { mutableStateOf<Double?>(null) }
+    var routeLine by remember { mutableStateOf<Polyline?>(null) }
+    var navigating by remember { mutableStateOf(false) }
+    var routeStatus by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     var visible by remember { mutableStateOf(true) }
     var touchCount by remember { mutableIntStateOf(0) }
     fun showControls() { visible = true; touchCount++ }
@@ -186,8 +196,8 @@ private fun MapPanel(
         if (userMarker == null) userMarker = m.addMarker(MarkerOptions().position(p).title("A tua localização"))
         else { userMarker?.position = p; userMarker?.let { m.updateMarker(it) } }
         destination?.let { distance = haversine(p.latitude, p.longitude, it.latitude, it.longitude) }
-        if (!firstCenter) { m.cameraPosition = CameraPosition.Builder().target(p).zoom(17.0).bearing(currentBearing.toDouble()).tilt(45.0).build(); firstCenter = true }
-        else if (mode == "Destino") { m.cameraPosition = CameraPosition.Builder().target(p).zoom(17.0).bearing(currentBearing.toDouble()).tilt(45.0).build() }
+        if (!firstCenter) { m.cameraPosition = CameraPosition.Builder().target(p).zoom(15.5).bearing(0.0).tilt(0.0).build(); firstCenter = true }
+        else if (navigating) { m.cameraPosition = CameraPosition.Builder().target(p).zoom(16.5).bearing(0.0).tilt(0.0).build() }
     }
     LaunchedEffect(map, gpx) {
         val m = map ?: return@LaunchedEffect
@@ -196,7 +206,7 @@ private fun MapPanel(
         val pts = gpx?.coordinates.orEmpty()
         if (pts.size > 1) {
             trackLine = m.addPolyline(PolylineOptions().addAll(pts).color(android.graphics.Color.rgb(197, 229, 106)).width(5f))
-            m.cameraPosition = CameraPosition.Builder().target(pts.first()).zoom(11.5).build()
+            m.cameraPosition = CameraPosition.Builder().target(pts.first()).zoom(11.5).bearing(0.0).tilt(0.0).build()
             firstCenter = true
         }
     }
@@ -241,7 +251,7 @@ private fun MapPanel(
                     FilledTonalButton(onClick = { onOpenPage("Comunidade"); showControls() }) { Text("Comunidade") }
                     FilledTonalIconButton(onClick = { onRequestLocation(); showControls() }) { Text("⌖") }
                     FilledTonalIconButton(onClick = {
-                        currentLocation?.let { map?.cameraPosition = CameraPosition.Builder().target(it).zoom(17.0).bearing(currentBearing.toDouble()).tilt(45.0).build() } ?: onRequestLocation()
+                        currentLocation?.let { map?.cameraPosition = CameraPosition.Builder().target(it).zoom(16.0).bearing(0.0).tilt(0.0).build() } ?: onRequestLocation()
                         showControls()
                     }) { Text("◎") }
                 }
@@ -265,15 +275,42 @@ private fun MapPanel(
                                 Text("Destino escolhido", fontWeight = FontWeight.Bold, color = Forest)
                                 Text(distance?.let { d -> "Distância em linha reta: %.1f km".format(d) } ?: "A aguardar localização.", style = MaterialTheme.typography.bodySmall)
                             }
-                            TextButton(onClick = { destination = null; distance = null; showControls() }) { Text("Limpar") }
+                            TextButton(onClick = { destination = null; distance = null; navigating = false; routeStatus = null; routeLine?.let { map?.removePolyline(it) }; routeLine = null; showControls() }) { Text("Limpar") }
                         }
+                        Spacer(Modifier.height(6.dp))
+                        Button(onClick = {
+                            val origin = currentLocation
+                            val target = destination
+                            if (origin == null) { routeStatus = "A obter a tua localização…"; onRequestLocation() }
+                            else if (target != null) {
+                                routeStatus = "A calcular percurso…"
+                                navigating = false
+                                scope.launch {
+                                    try {
+                                        val points = withContext(Dispatchers.IO) { fetchRoadRoute(origin, target) }
+                                        routeLine?.let { map?.removePolyline(it) }
+                                        routeLine = map?.addPolyline(PolylineOptions().addAll(points).color(android.graphics.Color.rgb(24, 59, 50)).width(6f))
+                                        navigating = true
+                                        routeStatus = "Percurso calculado. Navegação iniciada."
+                                        map?.cameraPosition = CameraPosition.Builder().target(origin).zoom(16.5).bearing(0.0).tilt(0.0).build()
+                                    } catch (_: Exception) {
+                                        routeStatus = "Não foi possível calcular a rota. Verifica a ligação à Internet e tenta novamente."
+                                    }
+                                }
+                            }
+                            showControls()
+                        }, modifier = Modifier.fillMaxWidth()) { Text(if (navigating) "Recalcular percurso" else "Calcular rota e iniciar navegação") }
+                        routeStatus?.let { Text(it, Modifier.padding(8.dp), color = Forest, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }
-        } else {
-            Surface(Modifier.align(Alignment.TopEnd).padding(12.dp), color = Color.White.copy(alpha = 0.82f), shape = RoundedCornerShape(20.dp)) {
-                Text("Tocar no mapa para mostrar controlos", Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
-            }
+        }
+        Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalIconButton(onClick = { visible = !visible; if (visible) touchCount++ }) { Text(if (visible) "◉" else "◎") }
+            FilledTonalIconButton(onClick = {
+                currentLocation?.let { map?.cameraPosition = CameraPosition.Builder().target(it).zoom(16.0).bearing(0.0).tilt(0.0).build() } ?: onRequestLocation()
+                showControls()
+            }) { Text("⌖") }
         }
         Surface(Modifier.align(Alignment.BottomStart).padding(8.dp), color = Color.White.copy(alpha = 0.88f), shape = RoundedCornerShape(8.dp)) {
             Text("© OpenStreetMap · OpenTopoMap · openmaps.fr", Modifier.padding(6.dp), style = MaterialTheme.typography.labelSmall, color = Color.DarkGray)
@@ -346,4 +383,26 @@ private fun haversine(aLat: Double, aLon: Double, bLat: Double, bLon: Double): D
     val dLon = Math.toRadians(bLon - aLon)
     val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(aLat)) * cos(Math.toRadians(bLat)) * sin(dLon / 2).pow(2.0)
     return 2 * r * asin(sqrt(a.coerceIn(0.0, 1.0)))
+}
+
+private fun fetchRoadRoute(origin: LatLng, destination: LatLng): List<LatLng> {
+    val url = URL("https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson&steps=true")
+    val connection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 15000
+        readTimeout = 20000
+        setRequestProperty("User-Agent", "MotoTrail-Android/0.3.3")
+    }
+    try {
+        val response = connection.inputStream.bufferedReader().use { it.readText() }
+        val json = JSONObject(response)
+        if (json.optString("code") != "Ok") throw IllegalStateException("No route")
+        val routes = json.getJSONArray("routes")
+        if (routes.length() == 0) throw IllegalStateException("No route")
+        val coords = routes.getJSONObject(0).getJSONObject("geometry").getJSONArray("coordinates")
+        return (0 until coords.length()).map { i ->
+            val pair = coords.getJSONArray(i)
+            LatLng(pair.getDouble(1), pair.getDouble(0))
+        }
+    } finally { connection.disconnect() }
 }
