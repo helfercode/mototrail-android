@@ -74,6 +74,7 @@ class RecordingService : Service() {
             lastLocation = null
             elapsedBeforeSegment = 0L
             writeText("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"TerraTrack\" xmlns=\"http://www.topografix.com/GPX/1/1\"><trk><name>${xmlEscape(requestedName.ifBlank { "Off-road ride" })}</name>\n")
+            preferences.edit().putLong(KEY_ELAPSED, 0L).apply()
             openSegment()
             preferences.edit()
                 .putString(KEY_FILE, recordingFile?.absolutePath)
