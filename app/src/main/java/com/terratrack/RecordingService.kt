@@ -62,7 +62,7 @@ class RecordingService : Service() {
         try {
             val directory = recordingDirectory()
             if (!directory.exists() && !directory.mkdirs()) throw IllegalStateException("Cannot create recordings folder")
-            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
             val safeName = requestedName.trim()
                 .ifBlank { "Off-road ride" }
                 .replace(Regex("[^A-Za-z0-9 _-]"), "")
@@ -229,6 +229,7 @@ class RecordingService : Service() {
     private fun openSegment() {
         if (segmentOpen) return
         elapsedBeforeSegment = preferences.getLong(KEY_ELAPSED, elapsedBeforeSegment)
+        lastLocation = null
         writeText("<trkseg>\n")
         segmentOpen = true
         segmentStartElapsed = SystemClock.elapsedRealtime()
@@ -327,7 +328,10 @@ class RecordingService : Service() {
     override fun onDestroy() {
         removeGpsUpdates()
         if (segmentOpen) {
-            try { closeSegment() } catch (_: Exception) { }
+            try {
+                preferences.edit().putString(KEY_STATE, STATE_PAUSED).apply()
+                closeSegment()
+            } catch (_: Exception) { }
         }
         super.onDestroy()
     }
