@@ -462,14 +462,14 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                         }
                         if (navigationMode == "POINT" && destination != null) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                RallyMetric("BEARING", destinationBearing?.let { "${it.toInt()}°" } ?: "—", Modifier.weight(1f))
+                                RallyPrimaryMetric("BEARING", destinationBearing?.let { "${it.toInt()}°" } ?: "—", Modifier.weight(1f))
+                                RallyMetric("DISTANCE", destinationDistance?.let { "${it.toInt()} m" } ?: "—", Modifier.weight(1f))
                                 RallyMetric("ALTITUDE", currentLocation?.takeIf { it.hasAltitude() }?.let { "${it.altitude.toInt()} m" } ?: "—", Modifier.weight(1f))
-                                RallyMetric("DESTINATION", "SET", Modifier.weight(1f))
                             }
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 RallyMetric("ALTITUDE", currentLocation?.takeIf { it.hasAltitude() }?.let { "${it.altitude.toInt()} m" } ?: "—", Modifier.weight(1f))
-                                RallyMetric("COMPASS", if (!compassHeading.isNaN()) "${compassHeading.toInt()}°" else currentLocation?.takeIf { it.hasBearing() && it.speed > 1.5f }?.let { "${it.bearing.toInt()}°" } ?: "—", Modifier.weight(1f))
+                                RallyPrimaryMetric("COMPASS", if (!compassHeading.isNaN()) "${compassHeading.toInt()}°" else currentLocation?.takeIf { it.hasBearing() && it.speed > 1.5f }?.let { "${it.bearing.toInt()}°" } ?: "—", Modifier.weight(1f))
                             }
                         }
                     }
