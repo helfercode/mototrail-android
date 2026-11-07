@@ -160,6 +160,15 @@ private fun MapPanel(
     var routeLine by remember { mutableStateOf<Polyline?>(null) }
     var navigating by remember { mutableStateOf(false) }
     var routeStatus by remember { mutableStateOf<String?>(null) }
+    var showRouteSettings by remember { mutableStateOf(false) }
+    var avoidTolls by remember { mutableStateOf(true) }
+    var avoidHighways by remember { mutableStateOf(true) }
+    var preferSecondary by remember { mutableStateOf(true) }
+    var surfaceMode by remember { mutableStateOf("Pavimentado") }
+    var routeInstructions by remember { mutableStateOf<List<RouteManeuver>>(emptyList()) }
+    var routeDistanceKm by remember { mutableDoubleStateOf(0.0) }
+    var routeDurationMin by remember { mutableDoubleStateOf(0.0) }
+    var nextInstruction by remember { mutableStateOf("Segue o percurso.") }
     val scope = rememberCoroutineScope()
     var visible by remember { mutableStateOf(true) }
     var touchCount by remember { mutableIntStateOf(0) }
@@ -282,12 +291,16 @@ private fun MapPanel(
                                 navigating = false
                                 scope.launch {
                                     try {
-                                        val points = withContext(Dispatchers.IO) { fetchRoadRoute(origin, target) }
+                                        val result = withContext(Dispatchers.IO) { fetchValhallaRoute(origin, target, avoidTolls, avoidHighways, preferSecondary, surfaceMode) }
                                         routeLine?.let { map?.removePolyline(it) }
-                                        routeLine = map?.addPolyline(PolylineOptions().addAll(points).color(android.graphics.Color.rgb(24, 59, 50)).width(6f))
+                                        routeLine = map?.addPolyline(PolylineOptions().addAll(result.points).color(android.graphics.Color.rgb(24, 59, 50)).width(6f))
+                                        routeInstructions = result.maneuvers
+                                        routeDistanceKm = result.distanceKm
+                                        routeDurationMin = result.durationMinutes
+                                        nextInstruction = result.maneuvers.firstOrNull()?.instruction ?: "Segue o percurso."
                                         navigating = true
                                         routeStatus = "Percurso calculado. Navegação iniciada."
-                                        map?.cameraPosition = CameraPosition.Builder().target(origin).zoom(16.5).bearing(0.0).tilt(0.0).build()
+                                        map?.cameraPosition = CameraPosition.Builder().target(origin).zoom(16.5).bearing(currentBearing.toDouble()).tilt(0.0).build()
                                     } catch (_: Exception) {
                                         routeStatus = "Não foi possível calcular a rota. Verifica a ligação à Internet e tenta novamente."
                                     }
