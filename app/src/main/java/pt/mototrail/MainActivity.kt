@@ -189,9 +189,13 @@ fun MapPage(
 ) {
     Text("O teu próximo caminho começa aqui.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     Box(
-        modifier = Modifier.fillMaxWidth().weight(300.dp).background(Color(0xFFE0E7DF), RoundedCornerShape(24.dp)).padding(20.dp),
-        contentAlignment = Alignment.Center
-    ) {
+    modifier = Modifier
+        .fillMaxWidth()
+        .height(300.dp)
+        .background(Color(0xFFE0E7DF), RoundedCornerShape(24.dp))
+        .padding(20.dp),
+    contentAlignment = Alignment.Center
+) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("⌖", style = MaterialTheme.typography.displayLarge, color = Forest)
             Text("ÁREA DE MAPA", fontWeight = FontWeight.Black, color = Forest)
