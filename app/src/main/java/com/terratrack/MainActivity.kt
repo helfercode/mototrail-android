@@ -74,6 +74,7 @@ private const val ACTIVE_TRACK = "active_track_path"
 private const val ACTIVE_MAP = "active_map_path"
 
 private data class MapOverlayState(
+    var mapDataStore: MapFile? = null,
     var route: Polyline? = null,
     var marker: FixedPixelCircle? = null,
     var destinationMarker: FixedPixelCircle? = null,
@@ -729,6 +730,7 @@ private fun OfflineMapCanvas(
             modifier = modifier,
             factory = { context ->
                 MapView(context).apply {
+                    tag = MapOverlayState()
                     setBuiltInZoomControls(false)
                     mapScaleBar.setVisible(true)
                     if (mapPath != null && File(mapPath).exists()) {
@@ -741,7 +743,8 @@ private fun OfflineMapCanvas(
                                 1f,
                                 model.frameBufferModel.overdrawFactor
                             )
-                            val dataStore = MapFile(FileInputStream(file))
+                            val dataStore = MapFile(file)
+                            (tag as MapOverlayState).mapDataStore = dataStore
                             val layer = TileRendererLayer(cache, dataStore, model.mapViewPosition, AndroidGraphicFactory.INSTANCE)
                             layer.setXmlRenderTheme(MapsforgeThemes.MOTORIDER)
                             layerManager.layers.add(layer)
@@ -871,7 +874,11 @@ private fun OfflineMapCanvas(
                     overlayState.recenterRequest = lastRecenter
                 }
             },
-            onRelease = { view -> view.destroyAll() }
+            onRelease = { view ->
+                view.destroyAll()
+                (view.tag as? MapOverlayState)?.mapDataStore?.close()
+                view.tag = null
+            }
         )
     }
 }
@@ -1394,7 +1401,8 @@ private fun downloadMapFile(context: Context, address: String): File {
     return downloadedFile.also { file ->
         require(file.exists() && file.length() > 1024L) { "Downloaded file is empty or too small to be a map." }
         try {
-            FileInputStream(file).use { input -> MapFile(input).startPosition() }
+            val mapData = MapFile(file)
+            try { mapData.startPosition() } finally { mapData.close() }
         } catch (error: Exception) {
             file.delete()
             throw IllegalStateException("Downloaded file is not a valid Mapsforge map: ${error.message}")
