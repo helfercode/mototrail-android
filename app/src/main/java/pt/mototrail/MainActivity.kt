@@ -74,7 +74,8 @@ private data class MapOverlayState(
     var marker: FixedPixelCircle? = null,
     var trackSignature: Int = Int.MIN_VALUE,
     var zoomRequest: Int = 0,
-    var recenterRequest: Int = 0
+    var recenterRequest: Int = 0,
+    val waypointMarkers: MutableList<FixedPixelCircle> = mutableListOf()
 )
 
 class TerraTrackUiState {
@@ -312,6 +313,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                 OfflineMapCanvas(
                     mapPath = activeMapPath,
                     trackPoints = visibleTrackPoints,
+                    waypoints = activeTrack?.waypoints.orEmpty(),
                     currentLocation = currentLocation,
                     followGps = followTrack,
                     zoomRequest = ui.zoomRequest + mapZoomRequest,
@@ -509,6 +511,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
 private fun OfflineMapCanvas(
     mapPath: String?,
     trackPoints: List<TrackPoint>,
+    waypoints: List<TrackWaypoint>,
     currentLocation: Location?,
     followGps: Boolean,
     zoomRequest: Int,
@@ -520,6 +523,7 @@ private fun OfflineMapCanvas(
     val latestTouch by rememberUpdatedState(onMapTouched)
     val latestError by rememberUpdatedState(onMapError)
     val latestTrack by rememberUpdatedState(trackPoints)
+    val latestWaypoints by rememberUpdatedState(waypoints)
     val latestLocation by rememberUpdatedState(currentLocation)
     val latestFollow by rememberUpdatedState(followGps)
     val lastZoom by rememberUpdatedState(zoomRequest)
@@ -565,7 +569,7 @@ private fun OfflineMapCanvas(
             },
             update = { view ->
                 val overlayState = (view.tag as? MapOverlayState) ?: MapOverlayState().also { view.tag = it }
-                val signature = latestTrack.hashCode()
+                val signature = 31 * latestTrack.hashCode() + latestWaypoints.hashCode()
                 if (overlayState.trackSignature != signature) {
                     overlayState.route?.let { view.layerManager.layers.remove(it) }
                     overlayState.route = null
@@ -579,6 +583,24 @@ private fun OfflineMapCanvas(
                         line.setPoints(latestTrack.map { LatLong(it.latitude, it.longitude) })
                         view.layerManager.layers.add(line)
                         overlayState.route = line
+                    }
+                    overlayState.waypointMarkers.forEach { view.layerManager.layers.remove(it) }
+                    overlayState.waypointMarkers.clear()
+                    if (latestWaypoints.isNotEmpty()) {
+                        val poiFill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.YELLOW))
+                            setStyle(Style.FILL)
+                        }
+                        val poiStroke = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLACK))
+                            setStrokeWidth(1.5f * view.model.displayModel.scaleFactor)
+                            setStyle(Style.STROKE)
+                        }
+                        latestWaypoints.forEach { waypoint ->
+                            val poi = FixedPixelCircle(LatLong(waypoint.latitude, waypoint.longitude), 8, poiFill, poiStroke)
+                            view.layerManager.layers.add(poi)
+                            overlayState.waypointMarkers.add(poi)
+                        }
                     }
                     overlayState.trackSignature = signature
                 }
@@ -642,7 +664,18 @@ private fun TracksScreen(
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(activeTrack.name, color = TextMain, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text(formatDistance(activeTrack.distanceKm), color = Signal, fontSize = 30.sp, fontWeight = FontWeight.Black)
-                    Text("${activeTrack.points.size} track points", color = TextMuted)
+                    Text("${activeTrack.points.size} track points · ${activeTrack.waypoints.size} waypoints", color = TextMuted)
+                    if (activeTrack.waypoints.isNotEmpty()) {
+                        Text("OFFLINE WAYPOINTS", color = Signal, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        activeTrack.waypoints.take(12).forEach { waypoint ->
+                            Text(
+                                "• ${waypoint.name}" + (waypoint.category?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                                color = TextMuted,
+                                fontSize = 12.sp
+                            )
+                        }
+                        if (activeTrack.waypoints.size > 12) Text("+ ${activeTrack.waypoints.size - 12} more", color = TextMuted, fontSize = 11.sp)
+                    }
                     Text(if (reversed) "Direction: REVERSED" else "Direction: ORIGINAL", color = TextMain, fontWeight = FontWeight.Bold)
                     OutlinedButton(onClick = onReverse, modifier = Modifier.fillMaxWidth().height(54.dp)) {
                         Text(if (reversed) "RESTORE ORIGINAL DIRECTION" else "REVERSE TRACK DIRECTION")
