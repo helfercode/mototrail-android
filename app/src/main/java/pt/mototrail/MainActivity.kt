@@ -71,7 +71,7 @@ fun MotoTrailApp() {
         if (uri != null) try {
             context.contentResolver.openInputStream(uri)?.use { gpx = parseGpx(it, displayName(context, uri)) }
             status = if (gpx != null) "GPX importado e lido localmente." else "Não foi possível abrir o ficheiro."
-            page = "Percursos"
+            page = "Mapa"
         } catch (e: Exception) {
             status = "Erro ao ler GPX: " + (e.message ?: "formato inválido")
         }
@@ -128,6 +128,7 @@ fun MotoTrailApp() {
             }
         }
     }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
