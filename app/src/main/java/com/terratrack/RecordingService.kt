@@ -68,7 +68,11 @@ class RecordingService : Service() {
     }
 
     private fun startNewRecording(requestedName: String) {
-        if (preferences.getString(KEY_STATE, STATE_IDLE) == STATE_RECORDING) return
+        val existingState = preferences.getString(KEY_STATE, STATE_IDLE)
+        if (existingState == STATE_RECORDING || existingState == STATE_PAUSED) {
+            preferences.edit().putString(KEY_STATUS, "Stop the current GPX recording before starting another one.").apply()
+            return
+        }
         try {
             val directory = recordingDirectory()
             if (!directory.exists() && !directory.mkdirs()) throw IllegalStateException("Cannot create recordings folder")
