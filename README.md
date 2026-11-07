@@ -12,6 +12,9 @@ TerraTrack is an Android off-road navigation application for adventure motorcycl
 - GPX parser for track points, route points and waypoints.
 - GPX track geometry drawn over the offline map as a high-visibility red line.
 - GPX waypoint markers shown on the map and listed in the track library.
+- OpenStreetMap POI downloads via Overpass for fuel, drinking water / springs, motorcycle and vehicle workshops, campsites and caravan sites.
+- POIs saved in a local device database file and overlaid on the map for offline use.
+- Configurable POI download radius of 10, 25 or 50 km around the current GPS fix.
 - Track distance and distance to the nearest point on the original GPX geometry.
 - GPX direction reversal without changing the imported source file.
 - Track-following mode with no automatic route recalculation.
