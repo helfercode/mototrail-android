@@ -698,7 +698,12 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                 },
                 onReverse = {
                     reversed = !reversed
-                    status = if (reversed) "Track direction reversed. Original GPX remains unchanged." else "Original GPX direction restored."
+                    if (followTrack && activeTrackPath != null && hasLocationPermission(context)) {
+                        TrackNavigationService.start(context, activeTrackPath!!, reversed)
+                        status = if (reversed) "Background navigation reversed. Turn guidance follows the reversed GPX direction." else "Original GPX direction restored in background navigation."
+                    } else {
+                        status = if (reversed) "Track direction reversed. Original GPX remains unchanged." else "Original GPX direction restored."
+                    }
                 },
                 onExport = {
                     val path = activeTrackPath
@@ -707,7 +712,10 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                         exportPicker.launch(File(path).name)
                     }
                 },
-                onShare = { activeTrackPath?.let { shareGpxFile(context, File(it)) } },
+                onShare = {
+                    try { activeTrackPath?.let { shareGpxFile(context, File(it)) } }
+                    catch (error: Exception) { status = "GPX sharing failed: ${error.message}" }
+                },
                 onBack = { ui.selectedTab = "MAP" }
             )
 
@@ -739,7 +747,10 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                     pendingExportPath = file.absolutePath
                     exportPicker.launch(file.name)
                 },
-                onShare = { file -> shareGpxFile(context, file) },
+                onShare = { file ->
+                    try { shareGpxFile(context, file) }
+                    catch (error: Exception) { recordingStatus = "GPX sharing failed: ${error.message}" }
+                },
                 onBack = { ui.selectedTab = "MAP" }
             )
 
