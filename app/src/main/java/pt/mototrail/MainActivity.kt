@@ -18,9 +18,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.maplibre.android.MapLibre
-import com.maplibre.android.maps.MapView
-import com.maplibre.android.maps.Style
+import org.maplibre.android.MapLibre
+import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
 import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
 import kotlin.math.*
