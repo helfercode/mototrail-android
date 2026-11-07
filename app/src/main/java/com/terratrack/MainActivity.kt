@@ -123,8 +123,12 @@ class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             when (event.keyCode) {
-                KeyEvent.KEYCODE_VOLUME_UP -> { uiState.zoomRequest++; return true }
-                KeyEvent.KEYCODE_VOLUME_DOWN -> { uiState.zoomRequest--; return true }
+                KeyEvent.KEYCODE_VOLUME_UP -> {
+                    if (uiState.selectedTab == "MAP") { uiState.zoomRequest++; return true }
+                }
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    if (uiState.selectedTab == "MAP") { uiState.zoomRequest--; return true }
+                }
                 KeyEvent.KEYCODE_MEDIA_NEXT -> { uiState.recenterRequest++; return true }
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
                     uiState.selectedTab = if (uiState.selectedTab == "MAP") "RECORD" else "MAP"
@@ -164,7 +168,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var controlsVisible by remember { mutableStateOf(true) }
     var interactionToken by remember { mutableIntStateOf(0) }
     var touchLocked by remember { mutableStateOf(false) }
-    var reversed by remember { mutableStateOf(false) }
+    var reversed by remember { mutableStateOf(preferences.getBoolean("track_reversed", false)) }
     var importBusy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Ready for the next off-road route.") }
     var recordingState by remember { mutableStateOf(preferences.getString(RecordingService.KEY_STATE, RecordingService.STATE_IDLE) ?: RecordingService.STATE_IDLE) }
@@ -236,6 +240,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                     savedTracks = withContext(Dispatchers.IO) { listTrackFiles(context) }
                     preferences.edit().putString(ACTIVE_TRACK, activeTrackPath).apply()
                     reversed = false
+                    preferences.edit().putBoolean("track_reversed", false).apply()
                     followTrack = false
                     status = "GPX imported and stored on this device."
                     ui.selectedTab = "MAP"
@@ -355,6 +360,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
             navigationOffTrack = navigationPreferences.getBoolean(TrackNavigationService.KEY_OFF_TRACK, false)
             if (recordingState == RecordingService.STATE_STOPPED) {
                 savedRecordings = withContext(Dispatchers.IO) { listRecordingFiles(context) }
+                savedTracks = withContext(Dispatchers.IO) { listTrackFiles(context) }
             }
             delay(1000)
         }
@@ -686,6 +692,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                             activeTrack = selected
                             preferences.edit().putString(ACTIVE_TRACK, activeTrackPath).apply()
                             reversed = false
+                            preferences.edit().putBoolean("track_reversed", false).apply()
                             followTrack = false
                             status = "Selected ${file.name}"
                         } catch (error: Exception) {
@@ -695,6 +702,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                 },
                 onReverse = {
                     reversed = !reversed
+                    preferences.edit().putBoolean("track_reversed", reversed).apply()
                     if (followTrack && activeTrackPath != null && hasLocationPermission(context)) {
                         TrackNavigationService.start(context, activeTrackPath!!, reversed)
                         status = if (reversed) "Background navigation reversed. Turn guidance follows the reversed GPX direction." else "Original GPX direction restored in background navigation."
@@ -1741,8 +1749,12 @@ private fun downloadMapFile(context: Context, address: String): File {
 
 private fun listTrackFiles(context: Context): List<File> =
     context.getExternalFilesDirs(null).filterNotNull()
-        .map { File(it, "tracks") }
-        .flatMap { it.listFiles()?.filter { file -> file.isFile && file.extension.equals("gpx", true) }.orEmpty() }
+        .flatMap { root ->
+            listOf(File(root, "tracks"), File(root, "recordings"))
+        }
+        .flatMap { directory ->
+            directory.listFiles()?.filter { file -> file.isFile && file.extension.equals("gpx", true) }.orEmpty()
+        }
         .distinctBy { it.absolutePath }
         .sortedByDescending { it.lastModified() }
 
