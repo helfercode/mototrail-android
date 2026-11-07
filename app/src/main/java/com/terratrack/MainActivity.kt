@@ -430,9 +430,9 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             RallyMetric("TRACK", activeTrack?.let { formatDistance(it.distanceKm) } ?: "—", Modifier.weight(1f))
                             if (navigationMode == "TRACK") {
-                                RallyMetric("OFF TRACK", distanceFromTrack?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(Locale.US, it / 1000)} km" } ?: "—", Modifier.weight(1f))
+                                RallyPrimaryMetric("OFF TRACK", distanceFromTrack?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(Locale.US, it / 1000)} km" } ?: "—", Modifier.weight(1f))
                             } else {
-                                RallyMetric("TO DESTINATION", destinationDistance?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(Locale.US, it / 1000)} km" } ?: "TAP MAP", Modifier.weight(1f))
+                                RallyPrimaryMetric("TO DESTINATION", destinationDistance?.let { if (it < 1000) "${it.toInt()} m" else "${"%.1f".format(Locale.US, it / 1000)} km" } ?: "TAP MAP", Modifier.weight(1f))
                             }
                             RallyMetric("GPS SPEED", currentLocation?.let { "${(it.speed * 3.6f).toInt()} km/h" } ?: "—", Modifier.weight(1f))
                         }
