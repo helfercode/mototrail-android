@@ -105,6 +105,8 @@ class RecordingService : Service() {
                 elapsedBeforeSegment = preferences.getLong(KEY_ELAPSED, 0L)
                 startForegroundCompat(buildNotification(if (state == STATE_RECORDING) "Recording GPX track" else "GPX recording paused"))
                 if (state == STATE_RECORDING) {
+                    // The process may have been killed without onDestroy; close its unfinished segment before resuming.
+                    writeText("</trkseg>\n")
                     openSegment()
                     requestGpsUpdates()
                 }
