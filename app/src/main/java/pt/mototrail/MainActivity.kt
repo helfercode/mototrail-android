@@ -242,8 +242,8 @@ private fun MapPanel(
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     SingleChoiceSegmentedButtonRow {
-                        SegmentedButton(mode == "Destino", { mode = "Destino"; showControls() }, SegmentedButtonDefaults.itemShape(0)) { Text("Navegar até destino") }
-                        SegmentedButton(mode == "GPX", { mode = "GPX"; showControls() }, SegmentedButtonDefaults.itemShape(1)) { Text("Seguir GPX livre") }
+                        SegmentedButton(mode == "Destino", { mode = "Destino"; showControls() }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("Navegar até destino") }
+                        SegmentedButton(mode == "GPX", { mode = "GPX"; showControls() }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("Seguir GPX livre") }
                     }
                 }
                 if (mode == "GPX") {
