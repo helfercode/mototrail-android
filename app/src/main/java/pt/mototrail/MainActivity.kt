@@ -69,6 +69,14 @@ private const val STATE_PREFS = "terratrack_state"
 private const val ACTIVE_TRACK = "active_track_path"
 private const val ACTIVE_MAP = "active_map_path"
 
+private data class MapOverlayState(
+    var route: Polyline? = null,
+    var marker: FixedPixelCircle? = null,
+    var trackSignature: Int = Int.MIN_VALUE,
+    var zoomRequest: Int = 0,
+    var recenterRequest: Int = 0
+)
+
 class TerraTrackUiState {
     var selectedTab by mutableStateOf("MAP")
     var zoomRequest by mutableIntStateOf(0)
@@ -556,24 +564,27 @@ private fun OfflineMapCanvas(
                 }
             },
             update = { view ->
-                val route = view.getTag(1001) as? Polyline
-                if (route != null) view.layerManager.layers.remove(route)
-                if (latestTrack.size > 1) {
-                    val paint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
-                        setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.RED))
-                        setStrokeWidth(8f * view.model.displayModel.scaleFactor)
-                        setStyle(Style.STROKE)
+                val overlayState = (view.tag as? MapOverlayState) ?: MapOverlayState().also { view.tag = it }
+                val signature = latestTrack.hashCode()
+                if (overlayState.trackSignature != signature) {
+                    overlayState.route?.let { view.layerManager.layers.remove(it) }
+                    overlayState.route = null
+                    if (latestTrack.size > 1) {
+                        val paint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.RED))
+                            setStrokeWidth(8f * view.model.displayModel.scaleFactor)
+                            setStyle(Style.STROKE)
+                        }
+                        val line = Polyline(paint, AndroidGraphicFactory.INSTANCE)
+                        line.setPoints(latestTrack.map { LatLong(it.latitude, it.longitude) })
+                        view.layerManager.layers.add(line)
+                        overlayState.route = line
                     }
-                    val line = Polyline(paint, AndroidGraphicFactory.INSTANCE)
-                    line.setPoints(latestTrack.map { LatLong(it.latitude, it.longitude) })
-                    view.layerManager.layers.add(line)
-                    view.setTag(1001, line)
-                } else {
-                    view.setTag(1001, null)
+                    overlayState.trackSignature = signature
                 }
 
-                val marker = view.getTag(1002) as? FixedPixelCircle
-                if (marker != null) view.layerManager.layers.remove(marker)
+                overlayState.marker?.let { view.layerManager.layers.remove(it) }
+                overlayState.marker = null
                 latestLocation?.let { location ->
                     val paint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
                         setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLUE))
@@ -586,25 +597,24 @@ private fun OfflineMapCanvas(
                     }
                     val circle = FixedPixelCircle(LatLong(location.latitude, location.longitude), 11, paint, outline)
                     view.layerManager.layers.add(circle)
-                    view.setTag(1002, circle)
+                    overlayState.marker = circle
                     if (latestFollow) view.setCenter(LatLong(location.latitude, location.longitude))
                 }
 
-                val oldZoom = (view.getTag(1003) as? Int) ?: 0
-                if (lastZoom != oldZoom) {
-                    val delta = (lastZoom - oldZoom).coerceIn(-8, 8)
+                if (lastZoom != overlayState.zoomRequest) {
+                    val delta = (lastZoom - overlayState.zoomRequest).coerceIn(-8, 8)
                     repeat(kotlin.math.abs(delta)) {
                         if (delta > 0) view.model.mapViewPosition.zoomIn(false)
                         else view.model.mapViewPosition.zoomOut(false)
                     }
-                    view.setTag(1003, lastZoom)
+                    overlayState.zoomRequest = lastZoom
                 }
-                val oldRecenter = (view.getTag(1004) as? Int) ?: 0
-                if (lastRecenter != oldRecenter) {
+                if (lastRecenter != overlayState.recenterRequest) {
                     latestLocation?.let { view.setCenter(LatLong(it.latitude, it.longitude)) }
-                    view.setTag(1004, lastRecenter)
+                    overlayState.recenterRequest = lastRecenter
                 }
-            }
+            },
+            onRelease = { view -> view.destroyAll() }
         )
     }
 }
