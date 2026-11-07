@@ -79,6 +79,9 @@ private data class MapOverlayState(
     var marker: FixedPixelCircle? = null,
     var destinationMarker: FixedPixelCircle? = null,
     var destinationLine: Polyline? = null,
+    val directionArrows: MutableList<Polyline> = mutableListOf(),
+    var downX: Float = 0f,
+    var downY: Float = 0f,
     var trackSignature: Int = Int.MIN_VALUE,
     var zoomRequest: Int = 0,
     var recenterRequest: Int = 0,
@@ -785,14 +788,28 @@ private fun OfflineMapCanvas(
                         setCenter(LatLong(39.6, -8.0))
                         setZoomLevel(6.toByte())
                     }
-                    setOnTouchListener { _, event ->
-                        if (event.action == android.view.MotionEvent.ACTION_DOWN) latestTouch()
-                        if (event.action == android.view.MotionEvent.ACTION_UP &&
-                            event.pointerCount == 1 && event.eventTime - event.downTime < 450L) {
-                            try {
-                                val tapped = mapViewProjection.fromPixels(event.x.toDouble(), event.y.toDouble())
-                                latestMapTap(TrackPoint(tapped.latitude, tapped.longitude))
-                            } catch (_: Exception) { }
+                    val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+                    setOnTouchListener { map, event ->
+                        val state = map.tag as? MapOverlayState
+                        when (event.actionMasked) {
+                            android.view.MotionEvent.ACTION_DOWN -> {
+                                latestTouch()
+                                state?.downX = event.x
+                                state?.downY = event.y
+                            }
+                            android.view.MotionEvent.ACTION_UP -> {
+                                val dx = event.x - (state?.downX ?: event.x)
+                                val dy = event.y - (state?.downY ?: event.y)
+                                val isTap = event.pointerCount == 1 &&
+                                    event.eventTime - event.downTime < 450L &&
+                                    dx * dx + dy * dy <= touchSlop * touchSlop
+                                if (isTap) {
+                                    try {
+                                        val tapped = mapViewProjection.fromPixels(event.x.toDouble(), event.y.toDouble())
+                                        latestMapTap(TrackPoint(tapped.latitude, tapped.longitude))
+                                    } catch (_: Exception) { }
+                                }
+                            }
                         }
                         false
                     }
@@ -804,6 +821,8 @@ private fun OfflineMapCanvas(
                 if (overlayState.trackSignature != signature) {
                     overlayState.route?.let { view.layerManager.layers.remove(it) }
                     overlayState.route = null
+                    overlayState.directionArrows.forEach { view.layerManager.layers.remove(it) }
+                    overlayState.directionArrows.clear()
                     if (latestTrack.size > 1) {
                         val paint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
                             setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.RED))
@@ -814,6 +833,18 @@ private fun OfflineMapCanvas(
                         line.setPoints(latestTrack.map { LatLong(it.latitude, it.longitude) })
                         view.layerManager.layers.add(line)
                         overlayState.route = line
+
+                        val arrowPaint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 215, 255, 53))
+                            setStrokeWidth(3.5f * view.model.displayModel.scaleFactor)
+                            setStyle(Style.STROKE)
+                        }
+                        buildDirectionArrows(latestTrack).forEach { arrowPoints ->
+                            val arrow = Polyline(arrowPaint, AndroidGraphicFactory.INSTANCE)
+                            arrow.setPoints(arrowPoints.map { LatLong(it.latitude, it.longitude) })
+                            view.layerManager.layers.add(arrow)
+                            overlayState.directionArrows.add(arrow)
+                        }
                     }
                     overlayState.waypointMarkers.forEach { view.layerManager.layers.remove(it) }
                     overlayState.waypointMarkers.clear()
@@ -1312,6 +1343,43 @@ private fun SettingRow(title: String, value: String) {
             Text(value, color = TextMain, fontSize = 14.sp)
         }
     }
+}
+
+private fun buildDirectionArrows(points: List<TrackPoint>): List<List<TrackPoint>> {
+    if (points.size < 4) return emptyList()
+    val stride = maxOf(2, points.size / 90)
+    val arrows = ArrayList<List<TrackPoint>>()
+
+    fun offset(origin: TrackPoint, eastMeters: Double, northMeters: Double): TrackPoint {
+        val cosLatitude = cos(Math.toRadians(origin.latitude)).coerceAtLeast(0.01)
+        return TrackPoint(
+            origin.latitude + northMeters / 111320.0,
+            origin.longitude + eastMeters / (111320.0 * cosLatitude)
+        )
+    }
+
+    for (index in stride until points.lastIndex step stride) {
+        val before = points[index - 1]
+        val tip = points[index]
+        val after = points[index + 1]
+        val cosLatitude = cos(Math.toRadians(tip.latitude)).coerceAtLeast(0.01)
+        val east = (after.longitude - before.longitude) * 111320.0 * cosLatitude
+        val north = (after.latitude - before.latitude) * 111320.0
+        val length = kotlin.math.sqrt(east * east + north * north)
+        if (!length.isFinite() || length < 0.5) continue
+
+        val ux = east / length
+        val uy = north / length
+        val baseEast = -ux * 13.0
+        val baseNorth = -uy * 13.0
+        val sideEast = -uy * 5.5
+        val sideNorth = ux * 5.5
+        val left = offset(tip, baseEast + sideEast, baseNorth + sideNorth)
+        val right = offset(tip, baseEast - sideEast, baseNorth - sideNorth)
+        arrows += listOf(left, tip)
+        arrows += listOf(right, tip)
+    }
+    return arrows
 }
 
 private fun bearingDegrees(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
