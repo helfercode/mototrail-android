@@ -3,6 +3,7 @@ package com.terratrack
 import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
+import java.util.Locale
 import kotlin.math.*
 
 data class TrackPoint(
