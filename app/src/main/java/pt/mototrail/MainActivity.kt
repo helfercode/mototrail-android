@@ -246,7 +246,7 @@ private fun MapPanel(
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
         if (visible) {
             Column(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
                     FilledTonalButton(onClick = { onOpenPage("Percursos"); showControls() }) { Text("Percursos") }
                     FilledTonalButton(onClick = { onOpenPage("Comunidade"); showControls() }) { Text("Comunidade") }
                 }
