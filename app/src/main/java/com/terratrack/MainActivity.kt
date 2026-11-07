@@ -150,6 +150,9 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var lastRecordingPath by remember { mutableStateOf(preferences.getString(RecordingService.KEY_LAST_FILE, null)) }
     var savedRecordings by remember { mutableStateOf<List<File>>(emptyList()) }
     var savedMaps by remember { mutableStateOf<List<File>>(emptyList()) }
+    var offlinePois by remember { mutableStateOf<List<OfflinePoi>>(emptyList()) }
+    var poiCategories by remember { mutableStateOf(setOf("fuel", "water", "repair", "camping")) }
+    var poiRadius by remember { mutableIntStateOf(25000) }
     var mapDownloadUrl by remember { mutableStateOf("") }
     var pendingRecordName by remember { mutableStateOf<String?>(null) }
     var pendingExportPath by remember { mutableStateOf<String?>(null) }
@@ -258,6 +261,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
         }
         savedRecordings = withContext(Dispatchers.IO) { listRecordingFiles(context) }
         savedMaps = withContext(Dispatchers.IO) { listMapFiles(context) }
+        offlinePois = withContext(Dispatchers.IO) { OfflinePoiStore.load(context) }
     }
 
     LaunchedEffect(Unit) {
@@ -361,7 +365,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                 OfflineMapCanvas(
                     mapPath = activeMapPath,
                     trackPoints = visibleTrackPoints,
-                    waypoints = activeTrack?.waypoints.orEmpty(),
+                    waypoints = activeTrack?.waypoints.orEmpty() + offlinePois.map { it.toTrackWaypoint() },
                     currentLocation = currentLocation,
                     destination = destination,
                     followGps = followTrack,
@@ -397,7 +401,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("TRACKS", "RECORD", "MAPS", "SETTINGS").forEach { tab ->
+                            listOf("TRACKS", "RECORD", "MAPS", "POI", "SETTINGS").forEach { tab ->
                                 FilledTonalButton(
                                     onClick = { ui.selectedTab = tab; showControls() },
                                     modifier = Modifier.weight(1f).height(48.dp),
@@ -407,7 +411,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                                     ),
                                     contentPadding = PaddingValues(horizontal = 4.dp)
                                 ) {
-                                    Text(tab, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                    Text(when (tab) { "TRACKS" -> "TRACK"; "RECORD" -> "REC"; "MAPS" -> "MAP"; else -> tab }, fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                             FilledTonalButton(
@@ -572,6 +576,54 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                 onExport = { file ->
                     pendingExportPath = file.absolutePath
                     exportPicker.launch(file.name)
+                },
+                onBack = { ui.selectedTab = "MAP" }
+            )
+
+            "POI" -> OfflinePoiScreen(
+                pois = offlinePois,
+                categories = poiCategories,
+                radiusMeters = poiRadius,
+                currentLocation = currentLocation,
+                busy = importBusy,
+                status = status,
+                onCategoryChange = { category, enabled ->
+                    poiCategories = if (enabled) poiCategories + category else poiCategories - category
+                },
+                onRadiusChange = { poiRadius = it },
+                onDownload = {
+                    val location = currentLocation
+                    if (location == null) {
+                        status = "Waiting for a GPS fix. Enable location and try again."
+                        if (!locationAllowed) permissionLauncher.launch(locationPermissions())
+                    } else if (poiCategories.isEmpty()) {
+                        status = "Select at least one POI category."
+                    } else {
+                        importBusy = true
+                        scope.launch {
+                            try {
+                                val downloaded = withContext(Dispatchers.IO) {
+                                    OfflinePoiStore.downloadAround(
+                                        location.latitude,
+                                        location.longitude,
+                                        poiRadius,
+                                        poiCategories
+                                    )
+                                }
+                                val merged = (offlinePois.associateBy { it.id } + downloaded.associateBy { it.id })
+                                    .values
+                                    .take(20000)
+                                    .toList()
+                                withContext(Dispatchers.IO) { OfflinePoiStore.save(context, merged) }
+                                offlinePois = merged
+                                status = "${downloaded.size} POIs downloaded. ${merged.size} are stored locally for offline use."
+                            } catch (error: Exception) {
+                                status = "POI download failed: ${error.message ?: "Overpass error"}"
+                            } finally {
+                                importBusy = false
+                            }
+                        }
+                    }
                 },
                 onBack = { ui.selectedTab = "MAP" }
             )
