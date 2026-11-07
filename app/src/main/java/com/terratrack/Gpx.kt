@@ -12,10 +12,18 @@ data class TrackPoint(
     val time: String? = null
 )
 
+data class TrackWaypoint(
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val category: String? = null
+)
+
 data class GpxTrack(
     val name: String,
     val points: List<TrackPoint>,
-    val distanceKm: Double
+    val distanceKm: Double,
+    val waypoints: List<TrackWaypoint> = emptyList()
 )
 
 fun parseGpx(input: InputStream, fileName: String): GpxTrack {
@@ -29,35 +37,61 @@ fun parseGpx(input: InputStream, fileName: String): GpxTrack {
     var currentLon: Double? = null
     var currentElevation: Double? = null
     var currentTime: String? = null
+    var inWaypoint = false
+    var waypointName = ""
+    var waypointCategory: String? = null
     val points = ArrayList<TrackPoint>()
+    val waypoints = ArrayList<TrackWaypoint>()
     var distance = 0.0
     var previous: TrackPoint? = null
 
     while (event != XmlPullParser.END_DOCUMENT) {
         when (event) {
             XmlPullParser.START_TAG -> when (parser.name.substringAfter(':').lowercase()) {
-                "name" -> if (points.isEmpty()) {
+                "name" -> {
                     val candidate = try { parser.nextText() } catch (_: Exception) { "" }
-                    if (candidate.isNotBlank()) name = candidate.trim()
+                    if (inWaypoint) waypointName = candidate.trim()
+                    else if (points.isEmpty() && candidate.isNotBlank()) name = candidate.trim()
+                }
+                "type", "sym" -> if (inWaypoint) {
+                    waypointCategory = try { parser.nextText().trim() } catch (_: Exception) { null }
+                }
+                "wpt" -> {
+                    inWaypoint = true
+                    currentLat = parser.getAttributeValue(null, "lat")?.toDoubleOrNull()
+                    currentLon = parser.getAttributeValue(null, "lon")?.toDoubleOrNull()
+                    waypointName = "Waypoint ${waypoints.size + 1}"
+                    waypointCategory = null
                 }
                 "trkpt", "rtept" -> {
+                    inWaypoint = false
                     currentLat = parser.getAttributeValue(null, "lat")?.toDoubleOrNull()
                     currentLon = parser.getAttributeValue(null, "lon")?.toDoubleOrNull()
                     currentElevation = null
                     currentTime = null
                 }
-                "ele" -> if (currentLat != null) {
+                "ele" -> if (!inWaypoint && currentLat != null) {
                     currentElevation = try { parser.nextText().toDoubleOrNull() } catch (_: Exception) { null }
                 }
-                "time" -> if (currentLat != null) {
+                "time" -> if (!inWaypoint && currentLat != null) {
                     currentTime = try { parser.nextText() } catch (_: Exception) { null }
                 }
             }
             XmlPullParser.END_TAG -> when (parser.name.substringAfter(':').lowercase()) {
-                "trkpt", "rtept" -> {
+                "wpt" -> {
                     val lat = currentLat
                     val lon = currentLon
                     if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
+                        waypoints.add(TrackWaypoint(waypointName, lat, lon, waypointCategory))
+                    }
+                    inWaypoint = false
+                    currentLat = null
+                    currentLon = null
+                }
+                "trkpt", "rtept" -> {
+                    val lat = currentLat
+                    val lon = currentLon
+                    if (!inWaypoint && lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
                         val point = TrackPoint(lat, lon, currentElevation, currentTime)
                         previous?.let { distance += haversineMeters(it.latitude, it.longitude, lat, lon) / 1000.0 }
                         points.add(point)
@@ -74,7 +108,7 @@ fun parseGpx(input: InputStream, fileName: String): GpxTrack {
     }
 
     require(points.size >= 2) { "The GPX file contains fewer than two valid track or route points." }
-    return GpxTrack(name, points, distance)
+    return GpxTrack(name, points, distance, waypoints)
 }
 
 fun haversineMeters(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
@@ -114,7 +148,7 @@ fun distanceToTrackMeters(latitude: Double, longitude: Double, points: List<Trac
 }
 
 fun formatDistance(kilometres: Double): String = when {
-    kilometres >= 100.0 -> "${"%.0f".format(kilometres)} km"
-    kilometres >= 10.0 -> "${"%.1f".format(kilometres)} km"
-    else -> "${"%.2f".format(kilometres)} km"
+    kilometres >= 100.0 -> "${"%.0f".format(Locale.US, kilometres)} km"
+    kilometres >= 10.0 -> "${"%.1f".format(Locale.US, kilometres)} km"
+    else -> "${"%.2f".format(Locale.US, kilometres)} km"
 }
