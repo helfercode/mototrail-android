@@ -7,6 +7,10 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
@@ -126,6 +130,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var activeTrackPath by remember { mutableStateOf(preferences.getString(ACTIVE_TRACK, null)) }
     var activeMapPath by remember { mutableStateOf(preferences.getString(ACTIVE_MAP, null)) }
     var currentLocation by remember { mutableStateOf<Location?>(null) }
+    var compassHeading by remember { mutableFloatStateOf(Float.NaN) }
     var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
     var followTrack by remember { mutableStateOf(false) }
     var navigationMode by remember { mutableStateOf("TRACK") }
@@ -297,6 +302,32 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
         }
     }
 
+    DisposableEffect(ui.selectedTab) {
+        if (ui.selectedTab != "MAP") {
+            onDispose { }
+        } else {
+            val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+            val rotationMatrix = FloatArray(9)
+            val orientation = FloatArray(3)
+            val listener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent) {
+                    SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                    SensorManager.getOrientation(rotationMatrix, orientation)
+                    val heading = ((Math.toDegrees(orientation[0].toDouble()) + 360.0) % 360.0).toFloat()
+                    val previous = compassHeading
+                    val delta = if (previous.isNaN()) 360f else ((heading - previous + 540f) % 360f) - 180f
+                    if (previous.isNaN() || kotlin.math.abs(delta) >= 2f) compassHeading = heading
+                }
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+            }
+            if (rotationSensor != null) {
+                sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
+            }
+            onDispose { sensorManager.unregisterListener(listener) }
+        }
+    }
+
     val visibleTrackPoints = if (reversed) activeTrack?.points?.asReversed().orEmpty() else activeTrack?.points.orEmpty()
     val distanceFromTrack = remember(currentLocation, visibleTrackPoints) {
         currentLocation?.let { distanceToTrackMeters(it.latitude, it.longitude, visibleTrackPoints) }
@@ -421,7 +452,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 RallyMetric("ALTITUDE", currentLocation?.takeIf { it.hasAltitude() }?.let { "${it.altitude.toInt()} m" } ?: "—", Modifier.weight(1f))
-                                RallyMetric("HEADING", currentLocation?.takeIf { it.hasBearing() && it.speed > 1.5f }?.let { "${it.bearing.toInt()}°" } ?: "—", Modifier.weight(1f))
+                                RallyMetric("COMPASS", if (!compassHeading.isNaN()) "${compassHeading.toInt()}°" else currentLocation?.takeIf { it.hasBearing() && it.speed > 1.5f }?.let { "${it.bearing.toInt()}°" } ?: "—", Modifier.weight(1f))
                             }
                         }
                     }
