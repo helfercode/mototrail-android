@@ -36,5 +36,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.mapsforge:mapsforge-map-android:0.25.0")
+    implementation("org.mapsforge:mapsforge-themes:0.25.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
