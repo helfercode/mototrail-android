@@ -1,8 +1,8 @@
-name: Build MotoTrail APK 0.3.2
+name: Build MotoTrail APK 0.3.3
 on:
   workflow_dispatch:
   push:
-    branches: [main, mototrail-0.3.1, mototrail-0.3.2]
+    branches: [main, mototrail-0.3.1, mototrail-0.3.3]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,5 +17,5 @@ jobs:
         run: gradle :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: MotoTrail-0.3.2-debug
+          name: MotoTrail-0.3.3-debug
           path: app/build/outputs/apk/debug/app-debug.apk
