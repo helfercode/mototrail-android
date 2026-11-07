@@ -94,6 +94,10 @@ private data class MapOverlayState(
     var downX: Float = 0f,
     var downY: Float = 0f,
     var trackSignature: Int = Int.MIN_VALUE,
+    var routeSignature: Int = Int.MIN_VALUE,
+    var waypointSignature: Int = Int.MIN_VALUE,
+    var destinationSignature: Int = Int.MIN_VALUE,
+    var hasCenteredOnGps: Boolean = false,
     var zoomRequest: Int = 0,
     var recenterRequest: Int = 0,
     val waypointMarkers: MutableList<FixedPixelCircle> = mutableListOf()
@@ -933,22 +937,24 @@ private fun OfflineMapCanvas(
             },
             update = { view ->
                 val overlayState = (view.tag as? MapOverlayState) ?: MapOverlayState().also { view.tag = it }
-                val signature = 31 * (31 * latestTrack.hashCode() + latestWaypoints.hashCode()) + (latestDestination?.hashCode() ?: 0)
-                if (overlayState.trackSignature != signature) {
+
+                val routeSignature = latestTrack.hashCode()
+                if (overlayState.routeSignature != routeSignature) {
                     overlayState.route?.let { view.layerManager.layers.remove(it) }
                     overlayState.route = null
                     overlayState.directionArrows.forEach { view.layerManager.layers.remove(it) }
                     overlayState.directionArrows.clear()
+
                     if (latestTrack.size > 1) {
-                        val paint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                        val trackPaint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
                             setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.RED))
                             setStrokeWidth(8f * view.model.displayModel.scaleFactor)
                             setStyle(Style.STROKE)
                         }
-                        val line = Polyline(paint, AndroidGraphicFactory.INSTANCE)
-                        line.setPoints(latestTrack.map { LatLong(it.latitude, it.longitude) })
-                        view.layerManager.layers.add(line)
-                        overlayState.route = line
+                        val route = Polyline(trackPaint, AndroidGraphicFactory.INSTANCE)
+                        route.setPoints(latestTrack.map { LatLong(it.latitude, it.longitude) })
+                        view.layerManager.layers.add(route)
+                        overlayState.route = route
 
                         val arrowPaint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
                             setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 215, 255, 53))
@@ -961,7 +967,14 @@ private fun OfflineMapCanvas(
                             view.layerManager.layers.add(arrow)
                             overlayState.directionArrows.add(arrow)
                         }
+                        view.setCenter(LatLong(latestTrack.first().latitude, latestTrack.first().longitude))
+                        view.setZoomLevel(13.toByte())
                     }
+                    overlayState.routeSignature = routeSignature
+                }
+
+                val waypointSignature = latestWaypoints.hashCode()
+                if (overlayState.waypointSignature != waypointSignature) {
                     overlayState.waypointMarkers.forEach { view.layerManager.layers.remove(it) }
                     overlayState.waypointMarkers.clear()
                     if (latestWaypoints.isNotEmpty()) {
@@ -975,63 +988,101 @@ private fun OfflineMapCanvas(
                             setStyle(Style.STROKE)
                         }
                         latestWaypoints.take(1200).forEach { waypoint ->
-                            val poi = FixedPixelCircle(LatLong(waypoint.latitude, waypoint.longitude), 8f, poiFill, poiStroke)
-                            view.layerManager.layers.add(poi)
-                            overlayState.waypointMarkers.add(poi)
+                            val marker = FixedPixelCircle(
+                                LatLong(waypoint.latitude, waypoint.longitude),
+                                8f,
+                                poiFill,
+                                poiStroke
+                            )
+                            view.layerManager.layers.add(marker)
+                            overlayState.waypointMarkers.add(marker)
                         }
                     }
-                    overlayState.trackSignature = signature
+                    overlayState.waypointSignature = waypointSignature
                 }
 
-                overlayState.destinationMarker?.let { view.layerManager.layers.remove(it) }
-                overlayState.destinationMarker = null
-                overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
-                overlayState.destinationLine = null
-                latestDestination?.let { target ->
-                    val targetFill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
-                        setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 215, 255, 53))
-                        setStyle(Style.FILL)
-                    }
-                    val targetOutline = AndroidGraphicFactory.INSTANCE.createPaint().apply {
-                        setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLACK))
-                        setStrokeWidth(2f * view.model.displayModel.scaleFactor)
-                        setStyle(Style.STROKE)
-                    }
-                    val targetMarker = FixedPixelCircle(LatLong(target.latitude, target.longitude), 12f, targetFill, targetOutline)
-                    view.layerManager.layers.add(targetMarker)
-                    overlayState.destinationMarker = targetMarker
-                    latestLocation?.let { location ->
-                        val bearingPaint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
-                            setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 0, 255, 255))
-                            setStrokeWidth(4f * view.model.displayModel.scaleFactor)
+                val destinationSignature = latestDestination?.hashCode() ?: 0
+                if (overlayState.destinationSignature != destinationSignature) {
+                    overlayState.destinationMarker?.let { view.layerManager.layers.remove(it) }
+                    overlayState.destinationMarker = null
+                    overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
+                    overlayState.destinationLine = null
+
+                    latestDestination?.let { target ->
+                        val targetFill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 215, 255, 53))
+                            setStyle(Style.FILL)
+                        }
+                        val targetOutline = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLACK))
+                            setStrokeWidth(2f * view.model.displayModel.scaleFactor)
                             setStyle(Style.STROKE)
                         }
-                        val bearingLine = Polyline(bearingPaint, AndroidGraphicFactory.INSTANCE)
-                        bearingLine.setPoints(listOf(
-                            LatLong(location.latitude, location.longitude),
-                            LatLong(target.latitude, target.longitude)
-                        ))
-                        view.layerManager.layers.add(bearingLine)
-                        overlayState.destinationLine = bearingLine
+                        val targetMarker = FixedPixelCircle(
+                            LatLong(target.latitude, target.longitude),
+                            12f,
+                            targetFill,
+                            targetOutline
+                        )
+                        view.layerManager.layers.add(targetMarker)
+                        overlayState.destinationMarker = targetMarker
                     }
+                    overlayState.destinationSignature = destinationSignature
                 }
 
-                overlayState.marker?.let { view.layerManager.layers.remove(it) }
-                overlayState.marker = null
+                latestDestination?.let { target ->
+                    latestLocation?.let { location ->
+                        val destinationPoints = listOf(
+                            LatLong(location.latitude, location.longitude),
+                            LatLong(target.latitude, target.longitude)
+                        )
+                        val line = overlayState.destinationLine
+                        if (line == null) {
+                            val bearingPaint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                                setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 0, 255, 255))
+                                setStrokeWidth(4f * view.model.displayModel.scaleFactor)
+                                setStyle(Style.STROKE)
+                            }
+                            val bearingLine = Polyline(bearingPaint, AndroidGraphicFactory.INSTANCE)
+                            bearingLine.setPoints(destinationPoints)
+                            view.layerManager.layers.add(bearingLine)
+                            overlayState.destinationLine = bearingLine
+                        } else {
+                            line.setPoints(destinationPoints)
+                        }
+                    }
+                } else {
+                    overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
+                    overlayState.destinationLine = null
+                }
+
                 latestLocation?.let { location ->
-                    val paint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
-                        setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLUE))
-                        setStyle(Style.FILL)
+                    val position = LatLong(location.latitude, location.longitude)
+                    val marker = overlayState.marker
+                    if (marker == null) {
+                        val fill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLUE))
+                            setStyle(Style.FILL)
+                        }
+                        val outline = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.WHITE))
+                            setStrokeWidth(2f * view.model.displayModel.scaleFactor)
+                            setStyle(Style.STROKE)
+                        }
+                        val newMarker = FixedPixelCircle(position, 11f, fill, outline)
+                        view.layerManager.layers.add(newMarker)
+                        overlayState.marker = newMarker
+                    } else {
+                        marker.setLatLong(position)
                     }
-                    val outline = AndroidGraphicFactory.INSTANCE.createPaint().apply {
-                        setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.WHITE))
-                        setStrokeWidth(2f * view.model.displayModel.scaleFactor)
-                        setStyle(Style.STROKE)
+                    if (latestFollow) view.setCenter(position)
+                    else if (!overlayState.hasCenteredOnGps && latestTrack.isEmpty()) {
+                        view.setCenter(position)
+                        overlayState.hasCenteredOnGps = true
                     }
-                    val circle = FixedPixelCircle(LatLong(location.latitude, location.longitude), 11f, paint, outline)
-                    view.layerManager.layers.add(circle)
-                    overlayState.marker = circle
-                    if (latestFollow) view.setCenter(LatLong(location.latitude, location.longitude))
+                } else {
+                    overlayState.marker?.let { view.layerManager.layers.remove(it) }
+                    overlayState.marker = null
                 }
 
                 if (lastZoom != overlayState.zoomRequest) {
