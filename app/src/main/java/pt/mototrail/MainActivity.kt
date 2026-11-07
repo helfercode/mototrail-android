@@ -147,6 +147,7 @@ private fun MapPanel(
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val routePrefs = remember { context.getSharedPreferences("mototrail_route_preferences", Context.MODE_PRIVATE) }
     var currentLocation by remember { mutableStateOf<LatLng?>(null) }
     var currentBearing by remember { mutableFloatStateOf(0f) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -161,10 +162,10 @@ private fun MapPanel(
     var navigating by remember { mutableStateOf(false) }
     var routeStatus by remember { mutableStateOf<String?>(null) }
     var showRouteSettings by remember { mutableStateOf(false) }
-    var avoidTolls by remember { mutableStateOf(true) }
-    var avoidHighways by remember { mutableStateOf(true) }
-    var preferSecondary by remember { mutableStateOf(true) }
-    var surfaceMode by remember { mutableStateOf("Pavimentado") }
+    var avoidTolls by remember { mutableStateOf(routePrefs.getBoolean("avoid_tolls", true)) }
+    var avoidHighways by remember { mutableStateOf(routePrefs.getBoolean("avoid_highways", true)) }
+    var preferSecondary by remember { mutableStateOf(routePrefs.getBoolean("prefer_secondary", true)) }
+    var surfaceMode by remember { mutableStateOf(routePrefs.getString("surface_mode", "Pavimentado") ?: "Pavimentado") }
     var routeInstructions by remember { mutableStateOf<List<RouteManeuver>>(emptyList()) }
     var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
     var routeDistanceKm by remember { mutableDoubleStateOf(0.0) }
@@ -174,6 +175,14 @@ private fun MapPanel(
     var visible by remember { mutableStateOf(true) }
     var touchCount by remember { mutableIntStateOf(0) }
     fun showControls() { visible = true; touchCount++ }
+    LaunchedEffect(avoidTolls, avoidHighways, preferSecondary, surfaceMode) {
+        routePrefs.edit()
+            .putBoolean("avoid_tolls", avoidTolls)
+            .putBoolean("avoid_highways", avoidHighways)
+            .putBoolean("prefer_secondary", preferSecondary)
+            .putString("surface_mode", surfaceMode)
+            .apply()
+    }
     LaunchedEffect(visible, touchCount) { if (visible) { delay(5000); visible = false } }
 
     DisposableEffect(locationEnabled) {
