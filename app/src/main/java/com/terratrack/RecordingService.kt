@@ -182,11 +182,13 @@ class RecordingService : Service() {
         try {
             if (manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1500L, 2f, listener, Looper.getMainLooper())
-            } else {
+            } else if (manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 manager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 3000L, 5f, listener, Looper.getMainLooper())
                 preferences.edit().putString(KEY_STATUS, "GPS is unavailable. Using network location until GPS is available.").apply()
+            } else {
+                throw IllegalStateException("Location services are disabled on this device.")
             }
-        } catch (error: SecurityException) {
+        } catch (error: Exception) {
             preferences.edit().putString(KEY_STATUS, "Location permission was revoked.").apply()
             stopRecording()
         }
@@ -308,8 +310,12 @@ class RecordingService : Service() {
     }
 
     private fun stopForegroundCompat() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
-        else @Suppress("DEPRECATION") stopForeground(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
     }
 
     private fun removeGpsUpdates() {
