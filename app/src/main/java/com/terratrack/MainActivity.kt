@@ -203,7 +203,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
             if (pendingTrackFollow) {
                 val path = activeTrackPath
                 if (path != null) {
-                    TrackNavigationService.start(context, path)
+                    TrackNavigationService.start(context, path, reversed)
                     followTrack = true
                 } else {
                     status = "Select a GPX file before starting navigation."
@@ -578,7 +578,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                                 permissionLauncher.launch(locationPermissions())
                             } else {
                                 try {
-                                    TrackNavigationService.start(context, activeTrackPath!!)
+                                    TrackNavigationService.start(context, activeTrackPath!!, reversed)
                                     followTrack = true
                                     status = "Background GPX navigation started. Off-track warnings begin at 50 metres."
                                 } catch (error: Exception) {
