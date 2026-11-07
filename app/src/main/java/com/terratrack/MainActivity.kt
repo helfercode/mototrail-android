@@ -134,6 +134,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     var compassHeading by remember { mutableFloatStateOf(Float.NaN) }
     var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
     var followTrack by remember { mutableStateOf(false) }
+    var showPoiLayer by remember { mutableStateOf(true) }
     var navigationMode by remember { mutableStateOf("TRACK") }
     var destination by remember { mutableStateOf<TrackPoint?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -369,7 +370,7 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                 OfflineMapCanvas(
                     mapPath = activeMapPath,
                     trackPoints = visibleTrackPoints,
-                    waypoints = activeTrack?.waypoints.orEmpty() + offlinePois.map { it.toTrackWaypoint() },
+                    waypoints = activeTrack?.waypoints.orEmpty() + if (showPoiLayer) offlinePois.map { it.toTrackWaypoint() } else emptyList(),
                     currentLocation = currentLocation,
                     destination = destination,
                     followGps = followTrack,
@@ -437,6 +438,10 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
                             RallyMetric("GPS SPEED", currentLocation?.let { "${(it.speed * 3.6f).toInt()} km/h" } ?: "—", Modifier.weight(1f))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            RallyButton(if (showPoiLayer) "POI ON" else "POI OFF", Modifier.weight(1f).height(44.dp), active = showPoiLayer) {
+                                showPoiLayer = !showPoiLayer
+                                showControls()
+                            }
                             RallyButton("TRACK FOLLOW", Modifier.weight(1f).height(44.dp), active = navigationMode == "TRACK") {
                                 navigationMode = "TRACK"
                                 destination = null
