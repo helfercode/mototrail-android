@@ -902,6 +902,7 @@ private fun OfflineMapCanvas(
     val latestFollow by rememberUpdatedState(followGps)
     val lastZoom by rememberUpdatedState(zoomRequest)
     val lastRecenter by rememberUpdatedState(recenterRequest)
+    val mapViewReference = remember(mapPath) { mutableStateOf<MapView?>(null) }
 
     key(mapPath) {
         AndroidView(
@@ -909,6 +910,7 @@ private fun OfflineMapCanvas(
             factory = { context ->
                 MapView(context).apply {
                     tag = MapOverlayState()
+                    mapViewReference.value = this
                     setBuiltInZoomControls(false)
                     mapScaleBar.setVisible(true)
                     if (mapPath != null && File(mapPath).exists()) {
@@ -1030,14 +1032,16 @@ private fun OfflineMapCanvas(
                     overlayState.waypointSignature = waypointSignature
                 }
 
-                val destinationSignature = latestDestination?.hashCode() ?: 0
+                val destination = latestDestination
+                val userLocation = latestLocation
+                val destinationSignature = destination?.hashCode() ?: 0
                 if (overlayState.destinationSignature != destinationSignature) {
                     overlayState.destinationMarker?.let { view.layerManager.layers.remove(it) }
                     overlayState.destinationMarker = null
                     overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
                     overlayState.destinationLine = null
 
-                    latestDestination?.let { target ->
+                    if (destination != null) {
                         val targetFill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
                             setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 215, 255, 53))
                             setStyle(Style.FILL)
@@ -1048,7 +1052,7 @@ private fun OfflineMapCanvas(
                             setStyle(Style.STROKE)
                         }
                         val targetMarker = FixedPixelCircle(
-                            LatLong(target.latitude, target.longitude),
+                            LatLong(destination.latitude, destination.longitude),
                             12f,
                             targetFill,
                             targetOutline
@@ -1059,12 +1063,10 @@ private fun OfflineMapCanvas(
                     overlayState.destinationSignature = destinationSignature
                 }
 
-                val currentLocation = latestLocation
-                val currentDestination = latestDestination
-                if (currentDestination != null && currentLocation != null) {
+                if (destination != null && userLocation != null) {
                     val destinationPoints = listOf(
-                        LatLong(currentLocation.latitude, currentLocation.longitude),
-                        LatLong(currentDestination.latitude, currentDestination.longitude)
+                        LatLong(userLocation.latitude, userLocation.longitude),
+                        LatLong(destination.latitude, destination.longitude)
                     )
                     val line = overlayState.destinationLine
                     if (line == null) {
@@ -1085,8 +1087,8 @@ private fun OfflineMapCanvas(
                     overlayState.destinationLine = null
                 }
 
-                if (currentLocation != null) {
-                    val position = LatLong(currentLocation.latitude, currentLocation.longitude)
+                if (userLocation != null) {
+                    val position = LatLong(userLocation.latitude, userLocation.longitude)
                     val marker = overlayState.marker
                     if (marker == null) {
                         val fill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
@@ -1104,8 +1106,9 @@ private fun OfflineMapCanvas(
                     } else {
                         marker.setLatLong(position)
                     }
-                    if (latestFollow) view.setCenter(position)
-                    else if (!overlayState.hasCenteredOnGps && latestTrack.isEmpty()) {
+                    if (latestFollow) {
+                        view.setCenter(position)
+                    } else if (!overlayState.hasCenteredOnGps && latestTrack.isEmpty()) {
                         view.setCenter(position)
                         overlayState.hasCenteredOnGps = true
                     }
@@ -1126,13 +1129,19 @@ private fun OfflineMapCanvas(
                     latestLocation?.let { view.setCenter(LatLong(it.latitude, it.longitude)) }
                     overlayState.recenterRequest = lastRecenter
                 }
-            },
-            onRelease = { view ->
-                view.destroyAll()
-                (view.tag as? MapOverlayState)?.mapDataStore?.close()
-                view.tag = null
             }
         )
+    }
+
+    DisposableEffect(mapPath) {
+        onDispose {
+            mapViewReference.value?.let { mapView ->
+                (mapView.tag as? MapOverlayState)?.mapDataStore?.close()
+                mapView.destroyAll()
+                mapView.tag = null
+            }
+            mapViewReference.value = null
+        }
     }
 }
 
