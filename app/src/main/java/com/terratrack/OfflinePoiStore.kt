@@ -72,37 +72,37 @@ object OfflinePoiStore {
         val filters = mutableListOf<String>()
         if ("fuel" in categories) {
             filters += listOf(
-                "node(around:$radiusMeters,$latitude,$longitude)[amenity=fuel];",
-                "way(around:$radiusMeters,$latitude,$longitude)[amenity=fuel];",
-                "relation(around:$radiusMeters,$latitude,$longitude)[amenity=fuel];"
+                "node(around:$radiusMeters,$latitude,$longitude)[\"amenity\"=\"fuel\"];",
+                "way(around:$radiusMeters,$latitude,$longitude)[\"amenity\"=\"fuel\"];",
+                "relation(around:$radiusMeters,$latitude,$longitude)[\"amenity\"=\"fuel\"];"
             )
         }
         if ("water" in categories) {
             filters += listOf(
-                "node(around:$radiusMeters,$latitude,$longitude)[amenity=drinking_water];",
-                "way(around:$radiusMeters,$latitude,$longitude)[amenity=drinking_water];",
-                "node(around:$radiusMeters,$latitude,$longitude)[natural=spring];",
-                "way(around:$radiusMeters,$latitude,$longitude)[natural=spring];"
+                "node(around:$radiusMeters,$latitude,$longitude)[\"amenity\"=\"drinking_water\"];",
+                "way(around:$radiusMeters,$latitude,$longitude)[\"amenity\"=\"drinking_water\"];",
+                "node(around:$radiusMeters,$latitude,$longitude)[\"natural\"=\"spring\"];",
+                "way(around:$radiusMeters,$latitude,$longitude)[\"natural\"=\"spring\"];"
             )
         }
         if ("repair" in categories) {
             filters += listOf(
-                "node(around:$radiusMeters,$latitude,$longitude)[shop=motorcycle];",
-                "way(around:$radiusMeters,$latitude,$longitude)[shop=motorcycle];",
-                "node(around:$radiusMeters,$latitude,$longitude)[shop=car_repair];",
-                "way(around:$radiusMeters,$latitude,$longitude)[shop=car_repair];",
-                "node(around:$radiusMeters,$latitude,$longitude)[craft=car_repair];",
-                "way(around:$radiusMeters,$latitude,$longitude)[craft=car_repair];"
+                "node(around:$radiusMeters,$latitude,$longitude)[\"shop\"=\"motorcycle\"];",
+                "way(around:$radiusMeters,$latitude,$longitude)[\"shop\"=\"motorcycle\"];",
+                "node(around:$radiusMeters,$latitude,$longitude)[\"shop\"=\"car_repair\"];",
+                "way(around:$radiusMeters,$latitude,$longitude)[\"shop\"=\"car_repair\"];",
+                "node(around:$radiusMeters,$latitude,$longitude)[\"craft\"=\"car_repair\"];",
+                "way(around:$radiusMeters,$latitude,$longitude)[\"craft\"=\"car_repair\"];"
             )
         }
         if ("camping" in categories) {
             filters += listOf(
-                "node(around:$radiusMeters,$latitude,$longitude)[tourism=camp_site];",
-                "way(around:$radiusMeters,$latitude,$longitude)[tourism=camp_site];",
-                "relation(around:$radiusMeters,$latitude,$longitude)[tourism=camp_site];",
-                "node(around:$radiusMeters,$latitude,$longitude)[tourism=caravan_site];",
-                "way(around:$radiusMeters,$latitude,$longitude)[tourism=caravan_site];",
-                "relation(around:$radiusMeters,$latitude,$longitude)[tourism=caravan_site];"
+                "node(around:$radiusMeters,$latitude,$longitude)[\"tourism\"=\"camp_site\"];",
+                "way(around:$radiusMeters,$latitude,$longitude)[\"tourism\"=\"camp_site\"];",
+                "relation(around:$radiusMeters,$latitude,$longitude)[\"tourism\"=\"camp_site\"];",
+                "node(around:$radiusMeters,$latitude,$longitude)[\"tourism\"=\"caravan_site\"];",
+                "way(around:$radiusMeters,$latitude,$longitude)[\"tourism\"=\"caravan_site\"];",
+                "relation(around:$radiusMeters,$latitude,$longitude)[\"tourism\"=\"caravan_site\"];"
             )
         }
 
