@@ -1,46 +1,52 @@
 # TerraTrack Android
 
-TerraTrack is an Android off-road navigation app for adventure motorcycles, SSVs and UTVs. It is designed for long-distance GPX travel, including routes such as the Trans Euro Trail (TET).
+TerraTrack is an Android off-road navigation application for adventure motorcycles, SSVs and UTVs. It is being built for long-distance GPX travel, including routes such as the Trans Euro Trail (TET).
 
-## Implemented in version 0.2.0
+## Version 0.3.0 features
 
 - Native Android application in Kotlin and Jetpack Compose, with an English interface.
-- Mapsforge offline vector map engine using local `.map` files.
-- Import compatible OpenAndroMaps / Mapsforge regional map files into local app storage. The storage selector uses the removable app-specific storage location when Android exposes one.
-- GPX import, local persistence, parsing of track points, route points and waypoints.
-- GPX track drawn as a bright line over the offline map.
-- Offline GPX waypoints drawn as map markers and listed in the track library.
-- Track distance and closest straight-line distance to the original GPX geometry.
-- Track direction reversal without modifying the imported source file.
-- Track-following mode does not invoke automatic route recalculation.
-- Rally layout with large controls, quick map zoom and GPS recenter.
-- Touchscreen rain lock with a three-second hold to unlock; Android system navigation remains available.
-- Bluetooth media-key mapping: Volume Up / Down adjusts map zoom, Media Next recentres on GPS and Media Previous switches between Map and Recorder.
+- Mapsforge offline vector map engine.
+- Import of regional Mapsforge `.map` files, including compatible OpenAndroMaps files.
+- Direct HTTPS download of a `.map` file or a ZIP archive containing one. Downloads are stored locally, with removable app-specific storage preferred when Android exposes it.
+- GPX import and local persistence.
+- GPX parser for track points, route points and waypoints.
+- GPX track geometry drawn over the offline map as a high-visibility red line.
+- GPX waypoint markers shown on the map and listed in the track library.
+- Track distance and distance to the nearest point on the original GPX geometry.
+- GPX direction reversal without changing the imported source file.
+- Track-following mode with no automatic route recalculation.
+- Point-to-point mode: tap the map to set a target and view straight-line distance and bearing. This is compass guidance, not a calculated route.
+- GPS speed, altitude when available, and device compass heading.
+- Rally layout with large controls and map zoom / GPS recenter buttons.
+- Controls hide after inactivity and reappear after a map tap.
+- Touchscreen rain lock with a three-second hold to unlock. Android system navigation remains available.
+- Bluetooth media-key mapping: Volume Up / Down adjusts map zoom, Media Next recentres GPS, and Media Previous switches Map / Recorder.
 - GPX recorder with start, pause, resume and stop.
-- Recording runs in a location foreground service and keeps a persistent notification while active.
-- Recorded GPX includes timestamped GPS points and altitude when the device supplies it.
-- Local recording list and GPX export through Android's document picker.
-- GPS readings are processed locally; the app does not upload tracks or location.
+- Recording uses an Android location foreground service and a persistent notification, and can continue with the screen off while the service is active.
+- Recorded GPX includes timestamped GPS points and altitude when the device supplies it. Paused sections are stored as separate GPX track segments.
+- Saved recording list and GPX export through Android's document picker.
+- Local processing of location and tracks. No account or location upload is implemented.
 
-## Important limitations of this build
+## Known limitations and validation still required
 
-- Offline maps are imported as Mapsforge `.map` files. There is no in-app regional map catalogue or automatic download service yet.
-- Map appearance uses the built-in Mapsforge Motorider render theme. Separate external render-theme installation is not yet included.
-- Offline POIs are currently GPX waypoints. Dedicated fuel, water, workshop and campsite datasets and filtering are not yet included.
-- Track following shows the distance to the nearest point on the original GPX line. Turn-by-turn instructions, direction arrows and off-track alerts are not yet included.
-- Bluetooth mapping uses standard Android key events. Carpe Iter, WunderLINQ and other hardware-specific commands require testing with the actual remote.
-- Background GPS recording depends on Android permissions, location settings and battery-management policy. Start recording while the app is visible and location permission has been granted.
-- Automatic night/day sensor switching, hillshade overlays and an enforced 30 FPS renderer cap are not yet included.
-- Community sharing and route publishing are not yet included.
+- Maps are imported or downloaded from a direct provider URL. There is no built-in regional catalogue or automatic discovery of OpenAndroMaps downloads.
+- Map display uses the built-in Mapsforge Motorider theme. Importing separate external render themes is not implemented.
+- GPX waypoints work as local POIs, but dedicated fuel, water, workshop and campsite datasets, categories and filters are not included yet.
+- Point-to-point mode displays straight-line distance and bearing. It does not calculate a traversable path.
+- No direction arrows along the GPX line, turn-point warnings or configurable off-track alerts are included yet.
+- There is no enforced 30 FPS renderer limit, adaptive day/night mode or hillshade layer yet.
+- Bluetooth commands are mapped through standard Android key events. Carpe Iter, WunderLINQ and other hardware-specific commands still need tests with the actual controllers.
+- Background recording depends on Android permissions, location settings and battery-management policy. Start recording while the app is visible and after granting location permission.
+- Community accounts, route publishing, group functions and P2P sharing are not included in this version.
 
-## Build APK
+## Build the APK
 
 A GitHub Actions workflow builds the debug APK on pushes to the `terratrack-rebuild` branch.
 
 1. Open the repository's **Actions** tab.
 2. Select **Build TerraTrack APK**.
 3. Open the latest completed run.
-4. Download the `TerraTrack-0.2.0-debug` artifact.
+4. Download the `TerraTrack-0.3.0-debug` artifact.
 5. Extract `app-debug.apk` and install it on an Android device.
 
-A successful commit or code upload is not proof of a successful APK build. The APK is only ready for installation after the GitHub Actions run finishes successfully.
+A successful code upload is not proof of a successful APK build. Install the APK only after GitHub Actions reports a successful build.
