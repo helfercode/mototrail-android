@@ -1,4 +1,4 @@
-package pt.mototrail
+package com.terratrack
 
 import android.Manifest
 import android.content.Context
@@ -14,6 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -23,517 +24,370 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.delay
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import org.maplibre.android.MapLibre
-import org.maplibre.android.annotations.Marker
-import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.Polyline
-import org.maplibre.android.annotations.PolylineOptions
-import org.maplibre.android.camera.CameraPosition
-import org.maplibre.android.geometry.LatLng
-import org.maplibre.android.maps.MapLibreMap
-import org.maplibre.android.maps.MapView
-import org.maplibre.android.maps.Style
 import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
 import kotlin.math.*
 
-private val Forest = Color(0xFF183B32)
-private val Lime = Color(0xFFC5E56A)
-private val Paper = Color(0xFFF3F5F0)
+private val Night = Color(0xFF080D0B)
+private val Panel = Color(0xFF17221D)
+private val Signal = Color(0xFFD7FF35)
+private val TrackRed = Color(0xFFFF3030)
+private val TextMain = Color(0xFFF7FAF7)
+private val TextMuted = Color(0xFFB7C2BB)
 
-data class GpxSummary(val name: String, val points: Int, val distanceKm: Double, val coordinates: List<LatLng>)
+data class TrackPoint(val latitude: Double, val longitude: Double)
+data class GpxTrack(
+    val name: String,
+    val points: List<TrackPoint>,
+    val distanceKm: Double
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        MapLibre.getInstance(applicationContext)
-        setContent { MotoTrailApp() }
+        setContent { TerraTrackApp() }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MotoTrailApp() {
-    var page by remember { mutableStateOf("Mapa") }
-    var gpx by remember { mutableStateOf<GpxSummary?>(null) }
-    var status by remember { mutableStateOf("Pronto para explorar.") }
-    var locationEnabled by remember { mutableStateOf(false) }
+private fun TerraTrackApp() {
+    var selectedTab by remember { mutableStateOf("MAP") }
+    var track by remember { mutableStateOf<GpxTrack?>(null) }
+    var status by remember { mutableStateOf("Ready for the next off-road route.") }
+    var currentLocation by remember { mutableStateOf<Location?>(null) }
+    var locationAllowed by remember { mutableStateOf(false) }
+    var following by remember { mutableStateOf(false) }
+    var reversed by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
 
-    val permissionPicker = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        locationEnabled = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        locationAllowed = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (!locationEnabled) status = "A localização não foi autorizada."
+        status = if (locationAllowed) "Location permission granted." else "Location permission was not granted."
     }
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) try {
-            context.contentResolver.openInputStream(uri)?.use { gpx = parseGpx(it, displayName(context, uri)) }
-            status = if (gpx != null) "GPX importado e lido localmente." else "Não foi possível abrir o ficheiro."
-            page = "Mapa"
-        } catch (e: Exception) {
-            status = "Erro ao ler GPX: " + (e.message ?: "formato inválido")
+
+    val gpxPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) {
+            busy = true
+            scope.launch {
+                try {
+                    val imported = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use {
+                            parseGpx(it, displayName(context, uri))
+                        } ?: throw IllegalStateException("The selected file could not be opened.")
+                    }
+                    track = imported
+                    reversed = false
+                    following = false
+                    status = "GPX loaded locally. No route recalculation will be performed."
+                    selectedTab = "MAP"
+                } catch (error: Exception) {
+                    status = "Could not read GPX: ${error.message ?: "invalid file"}"
+                } finally {
+                    busy = false
+                }
+            }
         }
     }
 
-    fun requestLocation() {
-        val fine = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarse = context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (fine || coarse) locationEnabled = true
-        else permissionPicker.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+    DisposableEffect(locationAllowed) {
+        if (!locationAllowed) {
+            onDispose { }
+        } else {
+            val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    currentLocation = location
+                }
+            }
+            try {
+                if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                    context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    if (manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                        manager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let { currentLocation = it }
+                        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 3f, listener)
+                    }
+                }
+            } catch (_: SecurityException) {
+                status = "Location access is unavailable."
+            }
+            onDispose { manager.removeUpdates(listener) }
+        }
     }
 
-    MaterialTheme(colorScheme = lightColorScheme(primary = Forest, secondary = Lime, background = Paper)) {
+    val activePoints = if (reversed) track?.points?.asReversed().orEmpty() else track?.points.orEmpty()
+    val distanceToTrack = remember(currentLocation, activePoints) {
+        val location = currentLocation
+        if (location == null || activePoints.isEmpty()) null
+        else activePoints.minOf { point ->
+            haversine(location.latitude, location.longitude, point.latitude, point.longitude)
+        }
+    }
+
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Signal,
+            onPrimary = Night,
+            secondary = TrackRed,
+            background = Night,
+            surface = Panel,
+            onSurface = TextMain
+        )
+    ) {
         Scaffold(
-            containerColor = Paper,
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            containerColor = Night,
             topBar = {
-                if (page != "Mapa") TopAppBar(
-                    title = { Text(page, fontWeight = FontWeight.Bold, color = Forest) },
-                    navigationIcon = { TextButton(onClick = { page = "Mapa" }) { Text("Mapa") } }
-                )
+                Row(
+                    Modifier.fillMaxWidth().background(Night).padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("TERRATRACK", color = Signal, fontSize = 23.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                        Text("OFFROAD NAVIGATION", color = TextMuted, fontSize = 11.sp, letterSpacing = 2.sp)
+                    }
+                    Text("BETA", color = Signal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
             },
             bottomBar = {
-                if (page != "Mapa") NavigationBar {
-                    listOf("Percursos", "Comunidade", "Perfil").forEach { item ->
-                        NavigationBarItem(selected = page == item, onClick = { page = item },
-                            icon = { Text(when (item) { "Percursos" -> "↗"; "Comunidade" -> "◎"; else -> "●" }) },
-                            label = { Text(item) })
+                NavigationBar(containerColor = Panel, contentColor = TextMain) {
+                    listOf("MAP", "TRACKS", "SETTINGS").forEach { tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            icon = { Text(when (tab) { "MAP" -> "⌖"; "TRACKS" -> "↗"; else -> "⚙" }, fontSize = 20.sp) },
+                            label = { Text(tab, fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Signal,
+                                selectedTextColor = Signal,
+                                indicatorColor = Color(0xFF34452B),
+                                unselectedIconColor = TextMuted,
+                                unselectedTextColor = TextMuted
+                            )
+                        )
                     }
                 }
             }
         ) { padding ->
-            if (page == "Mapa") {
-                MapPanel(locationEnabled, gpx, { requestLocation() },
-                    { filePicker.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "*/*")) },
-                    { page = it }, Modifier.fillMaxSize())
-            } else Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                when (page) {
-                    "Percursos" -> {
-                        Text("Os teus percursos", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text(status, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                        Button(onClick = { filePicker.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Escolher ficheiro GPX") }
-                        val track = gpx
-                        if (track == null) InfoCard("Ainda não importaste nenhum percurso.", "Importa um ficheiro GPX para veres o traçado no mapa.")
-                        else Card { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(track.name, fontWeight = FontWeight.Bold)
-                            Text("%.1f km · %d pontos".format(track.distanceKm, track.points))
-                            Text("O percurso pode ser seguido no modo Navegação livre.")
-                        } }
+            when (selectedTab) {
+                "MAP" -> MapHome(
+                    Modifier.fillMaxSize().padding(padding),
+                    track,
+                    activePoints.size,
+                    following,
+                    distanceToTrack,
+                    status,
+                    busy,
+                    onImport = { gpxPicker.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "*/*")) },
+                    onFollow = {
+                        if (track == null) status = "Import a GPX track before starting track following."
+                        else {
+                            following = !following
+                            status = if (following) "Track following enabled. The original GPX geometry is unchanged." else "Track following paused."
+                        }
+                    },
+                    onLocation = {
+                        if (locationAllowed) status = if (currentLocation == null) "Waiting for a GPS fix…" else "GPS position updated."
+                        else permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                     }
-                    "Comunidade" -> { Text("Comunidade", style = MaterialTheme.typography.headlineSmall); InfoCard("Em preparação.", "Grupos, viagens, pontos de encontro e entreajuda serão desenvolvidos mais tarde.") }
-                    else -> { Text("Perfil", style = MaterialTheme.typography.headlineSmall); InfoCard("Privacidade.", "A localização é apresentada localmente e só é ativada com a tua autorização. Esta versão não envia percursos nem localização para servidores."); InfoCard("Versão 0.3.2", "Mapa em ecrã inteiro, controlos retrácteis e visualização de percursos GPX.") }
-                }
+                )
+                "TRACKS" -> TracksScreen(
+                    Modifier.fillMaxSize().padding(padding),
+                    track,
+                    reversed,
+                    status,
+                    onImport = { gpxPicker.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "*/*")) },
+                    onReverse = {
+                        reversed = !reversed
+                        status = if (reversed) "Track direction reversed." else "Original track direction restored."
+                    }
+                )
+                else -> SettingsScreen(Modifier.fillMaxSize().padding(padding))
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MapPanel(
-    locationEnabled: Boolean,
-    gpx: GpxSummary?,
-    onRequestLocation: () -> Unit,
-    onImportGpx: () -> Unit,
-    onOpenPage: (String) -> Unit,
-    modifier: Modifier = Modifier
+private fun MapHome(
+    modifier: Modifier,
+    track: GpxTrack?,
+    pointCount: Int,
+    following: Boolean,
+    distanceToTrack: Double?,
+    status: String,
+    busy: Boolean,
+    onImport: () -> Unit,
+    onFollow: () -> Unit,
+    onLocation: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val routePrefs = remember { context.getSharedPreferences("mototrail_route_preferences", Context.MODE_PRIVATE) }
-    var currentLocation by remember { mutableStateOf<LatLng?>(null) }
-    var currentBearing by remember { mutableFloatStateOf(0f) }
-    var map by remember { mutableStateOf<MapLibreMap?>(null) }
-    var userMarker by remember { mutableStateOf<Marker?>(null) }
-    var targetMarker by remember { mutableStateOf<Marker?>(null) }
-    var trackLine by remember { mutableStateOf<Polyline?>(null) }
-    var firstCenter by remember { mutableStateOf(false) }
-    var mode by remember { mutableStateOf("Destino") }
-    var destination by remember { mutableStateOf<LatLng?>(null) }
-    var distance by remember { mutableStateOf<Double?>(null) }
-    var routeLine by remember { mutableStateOf<Polyline?>(null) }
-    var navigating by remember { mutableStateOf(false) }
-    var routeStatus by remember { mutableStateOf<String?>(null) }
-    var showRouteSettings by remember { mutableStateOf(false) }
-    var avoidTolls by remember { mutableStateOf(routePrefs.getBoolean("avoid_tolls", true)) }
-    var avoidHighways by remember { mutableStateOf(routePrefs.getBoolean("avoid_highways", true)) }
-    var preferSecondary by remember { mutableStateOf(routePrefs.getBoolean("prefer_secondary", true)) }
-    var surfaceMode by remember { mutableStateOf(routePrefs.getString("surface_mode", "Pavimentado") ?: "Pavimentado") }
-    var routeInstructions by remember { mutableStateOf<List<RouteManeuver>>(emptyList()) }
-    var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
-    var routeDistanceKm by remember { mutableDoubleStateOf(0.0) }
-    var routeDurationMin by remember { mutableDoubleStateOf(0.0) }
-    var nextInstruction by remember { mutableStateOf("Segue o percurso.") }
-    val scope = rememberCoroutineScope()
-    var visible by remember { mutableStateOf(true) }
-    var touchCount by remember { mutableIntStateOf(0) }
-    fun showControls() { visible = true; touchCount++ }
-    LaunchedEffect(avoidTolls, avoidHighways, preferSecondary, surfaceMode) {
-        routePrefs.edit()
-            .putBoolean("avoid_tolls", avoidTolls)
-            .putBoolean("avoid_highways", avoidHighways)
-            .putBoolean("prefer_secondary", preferSecondary)
-            .putString("surface_mode", surfaceMode)
-            .apply()
+    Column(modifier.background(Night).padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101A15), RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("OFFLINE MAP", color = Signal, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Text(
+                    if (track == null) "Import a GPX track to get started" else track.name,
+                    color = TextMain,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Offline map engine is the next build step",
+                    color = TextMuted,
+                    fontSize = 13.sp
+                )
+                if (track != null) {
+                    Text("${"%.1f".format(track.distanceKm)} km  •  $pointCount points", color = Signal, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            RallyMetric("TRACK DISTANCE", track?.let { "${"%.1f".format(it.distanceKm)} km" } ?: "—", Modifier.weight(1f))
+            RallyMetric("DISTANCE TO TRACK", distanceToTrack?.let { "${"%.0f".format(it * 1000)} m" } ?: "—", Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = onImport, modifier = Modifier.weight(1f).height(58.dp), enabled = !busy) {
+                Text(if (busy) "LOADING…" else "IMPORT GPX", fontWeight = FontWeight.Black)
+            }
+            Button(
+                onClick = onFollow,
+                modifier = Modifier.weight(1f).height(58.dp),
+                enabled = track != null,
+                colors = ButtonDefaults.buttonColors(containerColor = if (following) TrackRed else Signal, contentColor = Night)
+            ) {
+                Text(if (following) "STOP FOLLOWING" else "FOLLOW TRACK", fontWeight = FontWeight.Black)
+            }
+        }
+        OutlinedButton(onClick = onLocation, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Text("ENABLE / UPDATE GPS", fontWeight = FontWeight.Bold)
+        }
+        Text(status, color = TextMuted, fontSize = 12.sp)
     }
-    LaunchedEffect(visible, touchCount) { if (visible) { delay(5000); visible = false } }
+}
 
-    DisposableEffect(locationEnabled) {
-        if (!locationEnabled) onDispose { } else {
-            val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            val allowed = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val listener = object : LocationListener {
-                override fun onLocationChanged(location: Location) {
-                    currentLocation = LatLng(location.latitude, location.longitude)
-                    if (location.hasBearing() && location.speed > 1.5f) currentBearing = location.bearing
-                }
-            }
-            try {
-                if (allowed) listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).forEach { provider ->
-                    try {
-                        if (lm.isProviderEnabled(provider)) {
-                            lm.getLastKnownLocation(provider)?.let { if (currentLocation == null) currentLocation = LatLng(it.latitude, it.longitude) }
-                            lm.requestLocationUpdates(provider, 2000L, 5f, listener)
-                        }
-                    } catch (_: Exception) { }
-                }
-            } catch (_: SecurityException) { }
-            onDispose { lm.removeUpdates(listener) }
-        }
-    }
-    LaunchedEffect(map, currentLocation, currentBearing, navigating, routePoints, routeInstructions) {
-        val m = map ?: return@LaunchedEffect
-        val p = currentLocation ?: return@LaunchedEffect
-        if (userMarker == null) userMarker = m.addMarker(MarkerOptions().position(p).title("A tua localização"))
-        else { userMarker?.position = p; userMarker?.let { m.updateMarker(it) } }
-        destination?.let { distance = haversine(p.latitude, p.longitude, it.latitude, it.longitude) }
-        if (!firstCenter) { m.cameraPosition = CameraPosition.Builder().target(p).zoom(15.5).bearing(0.0).tilt(0.0).build(); firstCenter = true }
-        else if (navigating) {
-            m.cameraPosition = CameraPosition.Builder().target(p).zoom(16.5).bearing(currentBearing.toDouble()).tilt(0.0).build()
-            if (routePoints.isNotEmpty()) {
-                val nearest = routePoints.indices.minByOrNull { i ->
-                    haversine(p.latitude, p.longitude, routePoints[i].latitude, routePoints[i].longitude)
-                } ?: 0
-                nextInstruction = routeInstructions.firstOrNull { it.endShapeIndex > nearest + 2 }?.instruction ?: "Estás a chegar ao destino."
-            }
-        }
-    }
-    LaunchedEffect(map, gpx) {
-        val m = map ?: return@LaunchedEffect
-        trackLine?.let { m.removePolyline(it) }
-        trackLine = null
-        val pts = gpx?.coordinates.orEmpty()
-        if (pts.size > 1) {
-            trackLine = m.addPolyline(PolylineOptions().addAll(pts).color(android.graphics.Color.rgb(197, 229, 106)).width(5f))
-            m.cameraPosition = CameraPosition.Builder().target(pts.first()).zoom(11.5).bearing(0.0).tilt(0.0).build()
-            firstCenter = true
-        }
-    }
-    LaunchedEffect(map, destination, mode) {
-        val m = map ?: return@LaunchedEffect
-        targetMarker?.let { m.removeMarker(it) }
-        targetMarker = null
-        if (mode == "Destino") destination?.let { targetMarker = m.addMarker(MarkerOptions().position(it).title("Destino escolhido")) }
-        else { destination = null; distance = null }
-    }
-
-    Box(modifier) {
-        val mapView = remember {
-            MapView(context).apply {
-                onCreate(Bundle())
-                getMapAsync { m ->
-                    val json = """{"version":8,"sources":{"topo":{"type":"raster","tiles":["https://tile.openmaps.fr/opentopomap/{z}/{x}/{y}.png"],"tileSize":256,"attribution":"© OpenStreetMap contributors · OpenTopoMap · openmaps.fr"}},"layers":[{"id":"topo","type":"raster","source":"topo"}]}"""
-                    m.setStyle(Style.Builder().fromJson(json)) {
-                        map = m
-                        m.cameraPosition = CameraPosition.Builder().target(LatLng(39.6, -8.0)).zoom(6.2).build()
-                        m.addOnMapClickListener { point ->
-                            showControls()
-                            if (mode == "Destino") {
-                                destination = point
-                                currentLocation?.let { distance = haversine(it.latitude, it.longitude, point.latitude, point.longitude) }
-                            }
-                            true
-                        }
-                    }
-                }
-            }
-        }
-        DisposableEffect(mapView) {
-            mapView.onStart(); mapView.onResume()
-            onDispose { mapView.onPause(); mapView.onStop(); mapView.onDestroy() }
-        }
-        AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
-        if (visible) {
-            Column(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                    FilledTonalButton(onClick = { onOpenPage("Percursos"); showControls() }) { Text("Percursos") }
-                    FilledTonalButton(onClick = { onOpenPage("Comunidade"); showControls() }) { Text("Comunidade") }
-                    FilledTonalButton(onClick = { showRouteSettings = true; showControls() }) { Text("Definições de trajeto") }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    SingleChoiceSegmentedButtonRow {
-                        SegmentedButton(mode == "Destino", { mode = "Destino"; showControls() }, SegmentedButtonDefaults.itemShape(index = 0, count = 2)) { Text("Navegar até destino") }
-                        SegmentedButton(mode == "GPX", { mode = "GPX"; showControls() }, SegmentedButtonDefaults.itemShape(index = 1, count = 2)) { Text("Navegação livre") }
-                    }
-                }
-                if (mode == "GPX") {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        Button(onClick = { onImportGpx(); showControls() }) { Text("Importar GPX") }
-                    }
-                    gpx?.let { Surface(color = Color.White.copy(alpha = 0.94f), shape = RoundedCornerShape(8.dp)) {
-                        Text("${it.name} · %.1f km · ${it.points} pontos".format(it.distanceKm), Modifier.padding(8.dp), color = Forest)
-                    } }
-                } else destination?.let {
-                    Surface(color = Color.White.copy(alpha = 0.94f), shape = RoundedCornerShape(8.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Destino escolhido", fontWeight = FontWeight.Bold, color = Forest)
-                                Text(distance?.let { d -> "Distância em linha reta: %.1f km".format(d) } ?: "A aguardar localização.", style = MaterialTheme.typography.bodySmall)
-                            }
-                            TextButton(onClick = { destination = null; distance = null; navigating = false; routeStatus = null; routeLine?.let { map?.removePolyline(it) }; routeLine = null; showControls() }) { Text("Limpar") }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Button(onClick = {
-                            val origin = currentLocation
-                            val target = destination
-                            if (origin == null) { routeStatus = "A obter a tua localização…"; onRequestLocation() }
-                            else if (target != null) {
-                                routeStatus = "A calcular percurso…"
-                                navigating = false
-                                scope.launch {
-                                    try {
-                                        val result = withContext(Dispatchers.IO) { fetchValhallaRoute(origin, target, avoidTolls, avoidHighways, preferSecondary, surfaceMode) }
-                                        routeLine?.let { map?.removePolyline(it) }
-                                        routeLine = map?.addPolyline(PolylineOptions().addAll(result.points).color(android.graphics.Color.rgb(24, 59, 50)).width(6f))
-                                        routeInstructions = result.maneuvers
-                                        routePoints = result.points
-                                        routeDistanceKm = result.distanceKm
-                                        routeDurationMin = result.durationMinutes
-                                        nextInstruction = result.maneuvers.firstOrNull()?.instruction ?: "Segue o percurso."
-                                        navigating = true
-                                        routeStatus = "Percurso calculado. Navegação iniciada."
-                                        map?.cameraPosition = CameraPosition.Builder().target(origin).zoom(16.5).bearing(currentBearing.toDouble()).tilt(0.0).build()
-                                    } catch (_: Exception) {
-                                        routeStatus = "Não foi possível calcular a rota. Verifica a ligação à Internet e tenta novamente."
-                                    }
-                                }
-                            }
-                            showControls()
-                        }, modifier = Modifier.fillMaxWidth()) { Text(if (navigating) "Recalcular percurso" else "Calcular rota e iniciar navegação") }
-                        routeStatus?.let { Text(it, Modifier.padding(8.dp), color = Forest, style = MaterialTheme.typography.bodySmall) }
-                        if (routeDistanceKm > 0.0) {
-                            Text("%.1f km · cerca de %d min".format(routeDistanceKm, routeDurationMin.roundToInt()), Modifier.padding(horizontal = 8.dp), color = Forest)
-                            if (navigating) Text(nextInstruction, Modifier.padding(8.dp), fontWeight = FontWeight.Bold, color = Forest)
-                        }
-                        Text("Atenção: confirma sempre o percurso antes de partir. Pode incluir estradas intransitáveis, degradadas ou privadas, devido a informação cartográfica incompleta ou desactualizada.", Modifier.padding(8.dp), color = Color(0xFF8A3B16), style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-        Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalIconButton(onClick = { visible = !visible; if (visible) touchCount++ }) { Text(if (visible) "◉" else "◎") }
-            FilledTonalIconButton(onClick = {
-                currentLocation?.let { map?.cameraPosition = CameraPosition.Builder().target(it).zoom(16.0).bearing(0.0).tilt(0.0).build() } ?: onRequestLocation()
-                showControls()
-            }) { Text("⌖") }
-        }
-        if (showRouteSettings) {
-            AlertDialog(
-                onDismissRequest = { showRouteSettings = false },
-                title = { Text("Definições de trajeto") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = avoidTolls, onCheckedChange = { avoidTolls = it })
-                            Text("Evitar portagens")
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = avoidHighways, onCheckedChange = { avoidHighways = it })
-                            Text("Evitar autoestradas")
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = preferSecondary, onCheckedChange = { preferSecondary = it })
-                            Text("Privilegiar estradas secundárias e sinuosas")
-                        }
-                        Text("Tipo de piso", fontWeight = FontWeight.Bold)
-                        listOf("Pavimentado", "Misto", "Aventura").forEach { option ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(selected = surfaceMode == option, onClick = { surfaceMode = option })
-                                Text(when(option) {
-                                    "Pavimentado" -> "Evitar gravilha, terra e aceiros"
-                                    "Misto" -> "Combinar asfalto e caminhos não pavimentados"
-                                    else -> "Privilegiar gravilha, terra batida e caminhos"
-                                })
-                            }
-                        }
-                        Text("As preferências influenciam o cálculo, mas não garantem a condição, legalidade ou transitabilidade de cada estrada. A preferência por estradas sinuosas é aproximada através da escolha de vias secundárias.", color = Color(0xFF8A3B16), style = MaterialTheme.typography.bodySmall)
-                    }
-                },
-                confirmButton = { TextButton(onClick = { showRouteSettings = false }) { Text("Guardar") } }
-            )
-        }
-        Surface(Modifier.align(Alignment.BottomStart).padding(8.dp), color = Color.White.copy(alpha = 0.88f), shape = RoundedCornerShape(8.dp)) {
-            Text("© OpenStreetMap · OpenTopoMap · openmaps.fr", Modifier.padding(6.dp), style = MaterialTheme.typography.labelSmall, color = Color.DarkGray)
+@Composable
+private fun RallyMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            Text(label, color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(value, color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Black)
         }
     }
 }
 
 @Composable
-private fun InfoCard(title: String, body: String) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, fontWeight = FontWeight.Bold)
-            Text(body, color = Color.DarkGray, style = MaterialTheme.typography.bodyMedium)
+private fun TracksScreen(
+    modifier: Modifier,
+    track: GpxTrack?,
+    reversed: Boolean,
+    status: String,
+    onImport: () -> Unit,
+    onReverse: () -> Unit
+) {
+    Column(modifier.background(Night).padding(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("YOUR TRACKS", color = Signal, fontSize = 23.sp, fontWeight = FontWeight.Black)
+        Button(onClick = onImport, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+            Text("IMPORT GPX FILE", fontWeight = FontWeight.Black)
         }
+        if (track == null) {
+            Text("No GPX tracks imported yet.", color = TextMuted)
+        } else {
+            Surface(color = Panel, shape = RoundedCornerShape(12.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(track.name, color = TextMain, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                    Text("${"%.2f".format(track.distanceKm)} km", color = Signal, fontSize = 26.sp, fontWeight = FontWeight.Black)
+                    Text("${track.points.size} track points", color = TextMuted)
+                    Text(if (reversed) "Direction: REVERSED" else "Direction: ORIGINAL", color = TextMain, fontWeight = FontWeight.Bold)
+                    OutlinedButton(onClick = onReverse, modifier = Modifier.fillMaxWidth().height(54.dp)) {
+                        Text(if (reversed) "RESTORE ORIGINAL DIRECTION" else "REVERSE TRACK DIRECTION")
+                    }
+                    Text("Track following never recalculates or replaces the imported GPX line.", color = TextMuted, fontSize = 12.sp)
+                }
+            }
+        }
+        Text(status, color = TextMuted, fontSize = 12.sp)
     }
 }
 
 @Composable
-private fun Metric(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Forest)
+private fun SettingsScreen(modifier: Modifier) {
+    Column(modifier.background(Night).padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text("SETTINGS", color = Signal, fontSize = 23.sp, fontWeight = FontWeight.Black)
+        SettingRow("Navigation focus", "Off-road GPX track following")
+        SettingRow("Connectivity", "Designed for offline use")
+        SettingRow("Route calculation", "Disabled for imported GPX tracks")
+        SettingRow("Supported vehicles", "Adventure motorcycles, SSV and UTV")
+        Text("Offline map storage, Rally Mode, rain lock, Bluetooth controls and background GPS service will be added in subsequent milestones.", color = TextMuted, fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun SettingRow(title: String, value: String) {
+    Surface(color = Panel, shape = RoundedCornerShape(10.dp)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(value, color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
 private fun displayName(context: Context, uri: Uri): String {
-    var name = "Percurso GPX"
-    context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-        val i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-        if (c.moveToFirst() && i >= 0) name = c.getString(i) ?: name
+    var name = "Off-road track.gpx"
+    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (cursor.moveToFirst() && index >= 0) name = cursor.getString(index) ?: name
     }
     return name
 }
 
-private fun parseGpx(input: InputStream, fileName: String): GpxSummary {
+private fun parseGpx(input: InputStream, fileName: String): GpxTrack {
     val parser = Xml.newPullParser()
     parser.setInput(input, null)
     var event = parser.eventType
-    var name = fileName.removeSuffix(".gpx").removeSuffix(".GPX")
-    var count = 0
+    var name = fileName.substringBeforeLast('.')
+    val points = mutableListOf<TrackPoint>()
     var distance = 0.0
-    var previous: LatLng? = null
-    val coordinates = mutableListOf<LatLng>()
+    var previous: TrackPoint? = null
     while (event != XmlPullParser.END_DOCUMENT) {
-        if (event == XmlPullParser.START_TAG) when (parser.name.lowercase()) {
-            "name" -> if (count == 0) {
-                val candidate = try { parser.nextText() } catch (_: Exception) { "" }
-                if (candidate.isNotBlank()) name = candidate
-            }
-            "trkpt", "rtept" -> {
-                val lat = parser.getAttributeValue(null, "lat")?.toDoubleOrNull()
-                val lon = parser.getAttributeValue(null, "lon")?.toDoubleOrNull()
-                if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
-                    val point = LatLng(lat, lon)
-                    count++
-                    previous?.let { distance += haversine(it.latitude, it.longitude, lat, lon) }
-                    coordinates.add(point)
-                    previous = point
+        if (event == XmlPullParser.START_TAG) {
+            when (parser.name.substringAfter(':').lowercase()) {
+                "name" -> if (points.isEmpty()) {
+                    val candidate = try { parser.nextText() } catch (_: Exception) { "" }
+                    if (candidate.isNotBlank()) name = candidate.trim()
+                }
+                "trkpt", "rtept" -> {
+                    val lat = parser.getAttributeValue(null, "lat")?.toDoubleOrNull()
+                    val lon = parser.getAttributeValue(null, "lon")?.toDoubleOrNull()
+                    if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
+                        val point = TrackPoint(lat, lon)
+                        previous?.let { distance += haversine(it.latitude, it.longitude, lat, lon) }
+                        points.add(point)
+                        previous = point
+                    }
                 }
             }
         }
         event = parser.next()
     }
-    return GpxSummary(name, count, distance, coordinates)
+    require(points.size >= 2) { "The GPX file contains fewer than two route points." }
+    return GpxTrack(name, points, distance)
 }
 
 private fun haversine(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
-    val r = 6371.0
+    val radiusKm = 6371.0
     val dLat = Math.toRadians(bLat - aLat)
     val dLon = Math.toRadians(bLon - aLon)
-    val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(aLat)) * cos(Math.toRadians(bLat)) * sin(dLon / 2).pow(2.0)
-    return 2 * r * asin(sqrt(a.coerceIn(0.0, 1.0)))
-}
-
-private data class RouteManeuver(val instruction: String, val endShapeIndex: Int, val lengthKm: Double)
-private data class ValhallaRoute(val points: List<LatLng>, val maneuvers: List<RouteManeuver>, val distanceKm: Double, val durationMinutes: Double)
-
-private fun fetchValhallaRoute(
-    origin: LatLng,
-    destination: LatLng,
-    avoidTolls: Boolean,
-    avoidHighways: Boolean,
-    preferSecondary: Boolean,
-    surfaceMode: String
-): ValhallaRoute {
-    val useTrails = when(surfaceMode) { "Aventura" -> 0.95; "Misto" -> 0.55; else -> if (preferSecondary) 0.25 else 0.0 }
-    val useTracks = when(surfaceMode) { "Aventura" -> 0.95; "Misto" -> 0.5; else -> 0.0 }
-    val costing = JSONObject()
-        .put("use_highways", if (avoidHighways) 0.05 else 0.5)
-        .put("use_tolls", if (avoidTolls) 0.0 else 0.5)
-        .put("toll_booth_penalty", if (avoidTolls) 43200 else 0)
-        .put("use_trails", useTrails)
-        .put("use_tracks", useTracks)
-    val locations = org.json.JSONArray()
-        .put(JSONObject().put("lat", origin.latitude).put("lon", origin.longitude).put("type", "break"))
-        .put(JSONObject().put("lat", destination.latitude).put("lon", destination.longitude).put("type", "break"))
-    val request = JSONObject()
-        .put("locations", locations)
-        .put("costing", "motorcycle")
-        .put("costing_options", JSONObject().put("motorcycle", costing))
-        .put("units", "kilometers")
-        .put("language", "pt-PT")
-        .put("directions_type", "instructions")
-        .put("format", "json")
-    val url = URL("https://valhalla1.openstreetmap.de/route?json=" + java.net.URLEncoder.encode(request.toString(), "UTF-8"))
-    val connection = (url.openConnection() as HttpURLConnection).apply {
-        requestMethod = "GET"
-        connectTimeout = 20000
-        readTimeout = 30000
-        setRequestProperty("User-Agent", "MotoTrail-Android/0.4.0")
-    }
-    return try {
-        val response = (if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream)
-            .bufferedReader().use { it.readText() }
-        if (connection.responseCode !in 200..299) throw IllegalStateException("Serviço de rotas indisponível")
-        val trip = JSONObject(response).getJSONObject("trip")
-        val legs = trip.getJSONArray("legs")
-        if (legs.length() == 0) throw IllegalStateException("Não foi encontrada uma rota")
-        val leg = legs.getJSONObject(0)
-        val points = decodePolyline6(leg.getString("shape"))
-        if (points.size < 2) throw IllegalStateException("Geometria de rota inválida")
-        val maneuversJson = leg.getJSONArray("maneuvers")
-        val maneuvers = (0 until maneuversJson.length()).map { i ->
-            val item = maneuversJson.getJSONObject(i)
-            RouteManeuver(item.optString("instruction", "Continua em frente"), item.optInt("end_shape_index", 0), item.optDouble("length", 0.0))
-        }
-        val summary = trip.getJSONObject("summary")
-        ValhallaRoute(points, maneuvers, summary.optDouble("length", 0.0), summary.optDouble("time", 0.0) / 60.0)
-    } finally { connection.disconnect() }
-}
-
-private fun decodePolyline6(encoded: String): List<LatLng> {
-    val result = mutableListOf<LatLng>()
-    var index = 0
-    var lat = 0
-    var lon = 0
-    while (index < encoded.length) {
-        var shift = 0
-        var value = 0
-        var b: Int
-        do {
-            b = encoded[index++].code - 63
-            value = value or ((b and 0x1f) shl shift)
-            shift += 5
-        } while (b >= 0x20 && index < encoded.length)
-        lat += if ((value and 1) != 0) (value shr 1).inv() else (value shr 1)
-        shift = 0
-        value = 0
-        do {
-            b = encoded[index++].code - 63
-            value = value or ((b and 0x1f) shl shift)
-            shift += 5
-        } while (b >= 0x20 && index < encoded.length)
-        lon += if ((value and 1) != 0) (value shr 1).inv() else (value shr 1)
-        result.add(LatLng(lat / 1_000_000.0, lon / 1_000_000.0))
-    }
-    return result
+    val a = sin(dLat / 2).pow(2.0) +
+        cos(Math.toRadians(aLat)) * cos(Math.toRadians(bLat)) * sin(dLon / 2).pow(2.0)
+    return 2 * radiusKm * asin(sqrt(a.coerceIn(0.0, 1.0)))
 }
