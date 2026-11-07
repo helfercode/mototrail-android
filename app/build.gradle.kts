@@ -10,7 +10,7 @@ android {
         applicationId = "pt.mototrail"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
+        versionCode = 8
         versionName = "0.4.0"
     }
     buildFeatures { compose = true }
