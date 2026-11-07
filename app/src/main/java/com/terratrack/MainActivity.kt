@@ -63,6 +63,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.Locale
 import java.util.Calendar
+import kotlin.math.cos
 
 private object ThemeState {
     var night by mutableStateOf(true)
@@ -1036,55 +1037,33 @@ private fun OfflineMapCanvas(
                     overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
                     overlayState.destinationLine = null
 
-                    latestDestination?.let { target ->
-                        val targetFill = AndroidGraphicFactory.INSTANCE.createPaint().apply {
-                            setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 215, 255, 53))
-                            setStyle(Style.FILL)
-                        }
-                        val targetOutline = AndroidGraphicFactory.INSTANCE.createPaint().apply {
-                            setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLACK))
-                            setStrokeWidth(2f * view.model.displayModel.scaleFactor)
-                            setStyle(Style.STROKE)
-                        }
-                        val targetMarker = FixedPixelCircle(
-                            LatLong(target.latitude, target.longitude),
-                            12f,
-                            targetFill,
-                            targetOutline
-                        )
-                        view.layerManager.layers.add(targetMarker)
-                        overlayState.destinationMarker = targetMarker
-                    }
-                    overlayState.destinationSignature = destinationSignature
-                }
-
-                latestDestination?.let { target ->
-                    latestLocation?.let { location ->
-                        val destinationPoints = listOf(
-                            LatLong(location.latitude, location.longitude),
-                            LatLong(target.latitude, target.longitude)
-                        )
-                        val line = overlayState.destinationLine
-                        if (line == null) {
-                            val bearingPaint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
-                                setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 0, 255, 255))
-                                setStrokeWidth(4f * view.model.displayModel.scaleFactor)
-                                setStyle(Style.STROKE)
-                            }
-                            val bearingLine = Polyline(bearingPaint, AndroidGraphicFactory.INSTANCE)
-                            bearingLine.setPoints(destinationPoints)
-                            view.layerManager.layers.add(bearingLine)
-                            overlayState.destinationLine = bearingLine
-                        } else {
-                            line.setPoints(destinationPoints)
-                        }
-                    }
-                } else {
+                    val target = latestDestination
+                val location = latestLocation
+                if (target == null || location == null) {
                     overlayState.destinationLine?.let { view.layerManager.layers.remove(it) }
                     overlayState.destinationLine = null
+                } else {
+                    val destinationPoints = listOf(
+                        LatLong(location.latitude, location.longitude),
+                        LatLong(target.latitude, target.longitude)
+                    )
+                    val line = overlayState.destinationLine
+                    if (line == null) {
+                        val bearingPaint = AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                            setColor(AndroidGraphicFactory.INSTANCE.createColor(255, 0, 255, 255))
+                            setStrokeWidth(4f * view.model.displayModel.scaleFactor)
+                            setStyle(Style.STROKE)
+                        }
+                        val bearingLine = Polyline(bearingPaint, AndroidGraphicFactory.INSTANCE)
+                        bearingLine.setPoints(destinationPoints)
+                        view.layerManager.layers.add(bearingLine)
+                        overlayState.destinationLine = bearingLine
+                    } else {
+                        line.setPoints(destinationPoints)
+                    }
                 }
 
-                latestLocation?.let { location ->
+                if (location != null) {
                     val position = LatLong(location.latitude, location.longitude)
                     val marker = overlayState.marker
                     if (marker == null) {
