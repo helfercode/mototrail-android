@@ -421,8 +421,16 @@ private fun TerraTrackApp(ui: TerraTrackUiState) {
     }
 
     val visibleTrackPoints = if (reversed) activeTrack?.points?.asReversed().orEmpty() else activeTrack?.points.orEmpty()
-    val distanceFromTrack = remember(currentLocation, visibleTrackPoints) {
-        currentLocation?.let { distanceToTrackMeters(it.latitude, it.longitude, visibleTrackPoints) }
+    var distanceFromTrack by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(currentLocation, visibleTrackPoints) {
+        val location = currentLocation
+        distanceFromTrack = if (location == null || visibleTrackPoints.isEmpty()) {
+            null
+        } else {
+            withContext(Dispatchers.Default) {
+                distanceToTrackMeters(location.latitude, location.longitude, visibleTrackPoints)
+            }
+        }
     }
     val destinationDistance = remember(currentLocation, destination) {
         val location = currentLocation
@@ -1371,7 +1379,7 @@ private fun OfflinePoiScreen(
             Text(if (busy) "DOWNLOADING POI…" else "DOWNLOAD AROUND GPS", fontWeight = FontWeight.Black)
         }
         Text(
-            "OpenStreetMap data via Overpass API. A download sends your current coordinates and search radius to Overpass. The saved POIs are then available offline.",
+            "OpenStreetMap data via Overpass API. A download sends your current coordinates and search radius to Overpass. The saved POIs are then available offline. Verify access, opening status and water potability independently.",
             color = TextMuted,
             fontSize = 10.sp
         )
