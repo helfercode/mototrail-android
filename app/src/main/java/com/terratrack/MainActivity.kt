@@ -776,8 +776,8 @@ private fun OfflineMapCanvas(
                             setStrokeWidth(1.5f * view.model.displayModel.scaleFactor)
                             setStyle(Style.STROKE)
                         }
-                        latestWaypoints.forEach { waypoint ->
-                            val poi = FixedPixelCircle(LatLong(waypoint.latitude, waypoint.longitude), 8, poiFill, poiStroke)
+                        latestWaypoints.take(1200).forEach { waypoint ->
+                            val poi = FixedPixelCircle(LatLong(waypoint.latitude, waypoint.longitude), 8f, poiFill, poiStroke)
                             view.layerManager.layers.add(poi)
                             overlayState.waypointMarkers.add(poi)
                         }
@@ -799,7 +799,7 @@ private fun OfflineMapCanvas(
                         setStrokeWidth(2f * view.model.displayModel.scaleFactor)
                         setStyle(Style.STROKE)
                     }
-                    val targetMarker = FixedPixelCircle(LatLong(target.latitude, target.longitude), 12, targetFill, targetOutline)
+                    val targetMarker = FixedPixelCircle(LatLong(target.latitude, target.longitude), 12f, targetFill, targetOutline)
                     view.layerManager.layers.add(targetMarker)
                     overlayState.destinationMarker = targetMarker
                     latestLocation?.let { location ->
@@ -830,7 +830,7 @@ private fun OfflineMapCanvas(
                         setStrokeWidth(2f * view.model.displayModel.scaleFactor)
                         setStyle(Style.STROKE)
                     }
-                    val circle = FixedPixelCircle(LatLong(location.latitude, location.longitude), 11, paint, outline)
+                    val circle = FixedPixelCircle(LatLong(location.latitude, location.longitude), 11f, paint, outline)
                     view.layerManager.layers.add(circle)
                     overlayState.marker = circle
                     if (latestFollow) view.setCenter(LatLong(location.latitude, location.longitude))
