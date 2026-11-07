@@ -57,7 +57,7 @@ class TrackNavigationService : Service() {
                 val path = preferences.getString(KEY_TRACK_PATH, null)
                 if (preferences.getBoolean(KEY_ACTIVE, false) && !path.isNullOrBlank()) {
                     startForegroundCompat(buildOngoingNotification("Restoring GPX navigation…"))
-                    loadTrack(path)
+                    loadTrack(path, reversed = preferences.getBoolean(KEY_REVERSED, false), resetTurns = false)
                 } else {
                     stopSelf()
                 }
@@ -66,15 +66,24 @@ class TrackNavigationService : Service() {
         return START_STICKY
     }
 
-    private fun loadTrack(path: String) {
-        preferences.edit().putString(KEY_TRACK_PATH, path).putBoolean(KEY_ACTIVE, true).apply()
+    private fun loadTrack(path: String, reversed: Boolean, resetTurns: Boolean) {
+        val previousPath = preferences.getString(KEY_TRACK_PATH, null)
+        if (resetTurns || previousPath != path) {
+            lastTurnIndex = -1
+            preferences.edit().putInt(KEY_LAST_TURN_INDEX, -1).apply()
+        }
+        preferences.edit()
+            .putString(KEY_TRACK_PATH, path)
+            .putBoolean(KEY_REVERSED, reversed)
+            .putBoolean(KEY_ACTIVE, true)
+            .apply()
         Thread {
             try {
                 val file = File(path)
                 require(file.exists()) { "The selected GPX file is missing." }
                 val parsed = FileInputStream(file).use { parseGpx(it, file.name) }
                 mainHandler.post {
-                    trackPoints = parsed.points
+                    trackPoints = if (reversed) parsed.points.asReversed() else parsed.points
                     lastTurnIndex = preferences.getInt(KEY_LAST_TURN_INDEX, -1)
                     preferences.edit()
                         .putString(KEY_TRACK_NAME, parsed.name)
@@ -287,6 +296,7 @@ class TrackNavigationService : Service() {
         const val PREFS = "terratrack_navigation"
         const val KEY_ACTIVE = "navigation_active"
         const val KEY_TRACK_PATH = "navigation_track_path"
+        const val KEY_REVERSED = "navigation_reversed"
         const val KEY_TRACK_NAME = "navigation_track_name"
         const val KEY_OFF_TRACK = "navigation_off_track"
         const val KEY_DISTANCE_METERS = "navigation_distance_m"
@@ -297,6 +307,7 @@ class TrackNavigationService : Service() {
         private const val ACTION_START = "com.terratrack.navigation.START"
         private const val ACTION_STOP = "com.terratrack.navigation.STOP"
         private const val EXTRA_TRACK_PATH = "track_path"
+        private const val EXTRA_REVERSED = "track_reversed"
         private const val ONGOING_CHANNEL = "terratrack_gpx_navigation"
         private const val OFF_TRACK_CHANNEL = "terratrack_off_track_alerts"
         private const val NOTIFICATION_ID = 4413
@@ -309,10 +320,11 @@ class TrackNavigationService : Service() {
         private const val TURN_ALERT_METERS = 120.0
         private const val ALERT_INTERVAL_MS = 90000L
 
-        fun start(context: Context, trackPath: String) {
+        fun start(context: Context, trackPath: String, reversed: Boolean = false) {
             val intent = Intent(context, TrackNavigationService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_TRACK_PATH, trackPath)
+                .putExtra(EXTRA_REVERSED, reversed)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
             else context.startService(intent)
         }
